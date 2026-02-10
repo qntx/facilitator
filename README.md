@@ -1,4 +1,4 @@
-# x402 Facilitator
+# Facilitator
 
 [![Crates.io](https://img.shields.io/crates/v/facilitator.svg)](https://crates.io/crates/facilitator)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
@@ -12,8 +12,8 @@ The facilitator is a trusted third party that verifies and settles payments on b
 ## Quick Start
 
 ```bash
-# Build
-cargo build --release
+# Install
+cargo install facilitator
 
 # Generate a default config file
 facilitator init
@@ -28,9 +28,6 @@ facilitator serve --config my-config.toml
 ```bash
 docker build -t facilitator .
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
-
-# Build with specific chain features only
-docker build -t facilitator --build-arg FEATURES=chain-eip155 .
 ```
 
 ## CLI
