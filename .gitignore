@@ -22,5 +22,4 @@ target
 
 /3rdparty
 .env
-gateway.toml
-config.json
+config.toml
