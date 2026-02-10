@@ -1,165 +1,120 @@
 # x402 Facilitator Configuration
 # https://www.x402.org
 #
-# Uncomment the chains you want to support. Each chain requires:
-#   - rpc_url: JSON-RPC endpoint (public or private)
-#   - signer_private_key: hex key for EVM or base58 key for Solana
-#     (supports env var references: "$VAR" or "${VAR}")
+# Key concepts:
+#   - [signers]  — configure private keys ONCE, shared across all chains
+#   - [chains.*] — only RPC endpoints needed per chain
+#   - [[schemes]] — OPTIONAL, auto-generated from configured chains if omitted
+#   - Env var references: "$VAR" or "${VAR}" are resolved at startup
 
-# Server bind address and port.
-# Can also be set via HOST / PORT environment variables.
 host = "0.0.0.0"
 port = 8080
 
+# Global Signers
+#
+# Shared across all chains of the same type.
+# Per-chain overrides: add `signers = [...]` (EVM) or `signer = "..."` (Solana)
+# directly in the chain table.
+#
+# Option A: direct private keys
+# Option B: BIP-39 mnemonic (derive via BIP-44 / SLIP-10 using kobe)
+# If both are provided, direct keys take priority.
+
+[signers]
+evm = ["$EVM_SIGNER_PRIVATE_KEY"]          # hex, 0x-prefixed
+solana = "$SOLANA_SIGNER_PRIVATE_KEY"       # base58, 64-byte keypair
+# mnemonic = "$MNEMONIC"                   # BIP-39 phrase (alternative)
+# passphrase = ""                          # optional BIP-39 passphrase
+# evm_derivation_path = "m/44'/60'/0'/0/0"       # default: MetaMask
+# solana_derivation_path = "m/44'/501'/0'/0'"     # default: Phantom
+
 # EIP-155 (EVM) Chains — Mainnet
 #
-# x402 supports any EVM chain with EIP-3009 tokens (e.g. native USDC).
 # Key format: "eip155:<chain_id>"
+# Only RPC config needed — signers injected from [signers] above.
 
-# Ethereum Mainnet (chain 1)
+# Ethereum (chain 1)
 [chains."eip155:1"]
-rpc_url = "https://ethereum-rpc.publicnode.com"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://ethereum-rpc.publicnode.com" }]
 
 # Base (chain 8453)
 [chains."eip155:8453"]
-rpc_url = "https://mainnet.base.org"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://mainnet.base.org" }]
 
 # Optimism (chain 10)
 [chains."eip155:10"]
-rpc_url = "https://mainnet.optimism.io"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://mainnet.optimism.io" }]
 
 # Arbitrum One (chain 42161)
 [chains."eip155:42161"]
-rpc_url = "https://arb1.arbitrum.io/rpc"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://arb1.arbitrum.io/rpc" }]
 
 # Polygon PoS (chain 137)
 [chains."eip155:137"]
-rpc_url = "https://polygon-rpc.com"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://polygon-rpc.com" }]
 
 # Avalanche C-Chain (chain 43114)
 [chains."eip155:43114"]
-rpc_url = "https://api.avax.network/ext/bc/C/rpc"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://api.avax.network/ext/bc/C/rpc" }]
 
 # Celo (chain 42220)
 [chains."eip155:42220"]
-rpc_url = "https://forno.celo.org"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://forno.celo.org" }]
 
 # Monad (chain 143)
 [chains."eip155:143"]
-rpc_url = "https://rpc.monad.xyz"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://rpc.monad.xyz" }]
 
 # EIP-155 (EVM) Chains — Testnet
 
 # Base Sepolia (chain 84532)
 [chains."eip155:84532"]
-rpc_url = "https://sepolia.base.org"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://sepolia.base.org" }]
 
 # Ethereum Sepolia (chain 11155111)
 [chains."eip155:11155111"]
-rpc_url = "https://ethereum-sepolia-rpc.publicnode.com"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://ethereum-sepolia-rpc.publicnode.com" }]
 
 # Optimism Sepolia (chain 11155420)
 [chains."eip155:11155420"]
-rpc_url = "https://sepolia.optimism.io"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://sepolia.optimism.io" }]
 
 # Arbitrum Sepolia (chain 421614)
 [chains."eip155:421614"]
-rpc_url = "https://sepolia-rollup.arbitrum.io/rpc"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://sepolia-rollup.arbitrum.io/rpc" }]
 
 # Avalanche Fuji (chain 43113)
 [chains."eip155:43113"]
-rpc_url = "https://api.avax-test.network/ext/bc/C/rpc"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://api.avax-test.network/ext/bc/C/rpc" }]
 
 # Polygon Amoy (chain 80002)
 [chains."eip155:80002"]
-rpc_url = "https://rpc-amoy.polygon.technology"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://rpc-amoy.polygon.technology" }]
 
 # Monad Testnet (chain 10143)
 [chains."eip155:10143"]
-rpc_url = "https://testnet-rpc.monad.xyz"
-signer_private_key = "$EVM_SIGNER_PRIVATE_KEY"
+rpc = [{ http = "https://testnet-rpc.monad.xyz" }]
 
 # Solana Chains
+#
 # Key format: "solana:<truncated_genesis_hash>"
 
 # Solana Mainnet
 [chains."solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
-rpc_url = "https://api.mainnet-beta.solana.com"
-signer_private_key = "$SOLANA_SIGNER_PRIVATE_KEY"
+rpc = "https://api.mainnet-beta.solana.com"
 
 # Solana Devnet
 [chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
-rpc_url = "https://api.devnet.solana.com"
-signer_private_key = "$SOLANA_SIGNER_PRIVATE_KEY"
+rpc = "https://api.devnet.solana.com"
 
-# Scheme Registrations
-# Each [[schemes]] entry enables a payment scheme on specific chains.
-# Only list chains that are actually configured (uncommented) above.
-
-[[schemes]]
-scheme = "v1-eip155-exact"
-chains = [
-    "eip155:1",
-    "eip155:8453",
-    "eip155:10",
-    "eip155:42161",
-    "eip155:137",
-    "eip155:43114",
-    "eip155:42220",
-    "eip155:143",
-    "eip155:84532",
-    "eip155:11155111",
-    "eip155:11155420",
-    "eip155:421614",
-    "eip155:43113",
-    "eip155:80002",
-    "eip155:10143",
-]
-
-[[schemes]]
-scheme = "v2-eip155-exact"
-chains = [
-    "eip155:1",
-    "eip155:8453",
-    "eip155:10",
-    "eip155:42161",
-    "eip155:137",
-    "eip155:43114",
-    "eip155:42220",
-    "eip155:143",
-    "eip155:84532",
-    "eip155:11155111",
-    "eip155:11155420",
-    "eip155:421614",
-    "eip155:43113",
-    "eip155:80002",
-    "eip155:10143",
-]
-
-[[schemes]]
-scheme = "v1-solana-exact"
-chains = [
-    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-    "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-]
-
-[[schemes]]
-scheme = "v2-solana-exact"
-chains = [
-    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-    "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-]
+# Scheme Registrations (optional)
+#
+# If this section is omitted or empty, schemes are AUTO-GENERATED:
+#   - All EVM chains → v1-eip155-exact + v2-eip155-exact
+#   - All Solana chains → v1-solana-exact + v2-solana-exact
+#
+# Uncomment below ONLY if you need to restrict which schemes/chains:
+#
+# [[schemes]]
+# scheme = "v2-eip155-exact"
+# chains = ["eip155:8453", "eip155:84532"]

@@ -16,6 +16,7 @@ mod facilitator;
 mod routes;
 mod schemes;
 mod signal;
+mod signers;
 #[cfg(feature = "telemetry")]
 mod telemetry;
 

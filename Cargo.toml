@@ -4,44 +4,38 @@ default-members = ["facilitator"]
 resolver = "3"
 
 [workspace.package]
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/qntx/x402-facilitator"
+repository = "https://github.com/qntx/facilitator"
 description = "X402 Facilitator"
 
 [workspace.dependencies]
-# r402 SDK
+async-trait = "0.1"
+axum = "0.8"
+bs58 = { version = "0.5", features = ["alloc"] }
+clap = { version = "4", features = ["derive", "env"] }
+dotenvy = "0.15"
+hex = "0.4"
+kobe = { version = "0.4", features = ["std"] }
+kobe-eth = { version = "0.4", features = ["std"] }
+kobe-sol = { version = "0.4", features = ["std"] }
+opentelemetry = "0.31"
+opentelemetry-otlp = { version = "0.31", features = ["metrics", "grpc-tonic"] }
+opentelemetry_sdk = "0.31"
+opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
+opentelemetry-stdout = { version = "0.31", features = ["trace", "metrics"] }
 r402 = { version = "0.3", features = ["cli"] }
 r402-evm = { version = "0.3", features = ["facilitator"] }
 r402-svm = { version = "0.3", features = ["facilitator"] }
-
-# Core
-async-trait = "0.1"
+rustls = { version = "0.23", features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-
-# Runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-
-# Web
-axum = "0.8"
-rustls = { version = "0.23", features = ["ring"] }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
-
-# Config
-clap = { version = "4", features = ["derive", "env"] }
-dotenvy = "0.15"
 toml = "0.9"
-
-# Telemetry
-opentelemetry = "0.31"
-opentelemetry_sdk = "0.31"
-opentelemetry-otlp = { version = "0.31", features = ["metrics", "grpc-tonic"] }
-opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
-opentelemetry-stdout = { version = "0.31", features = ["trace", "metrics"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 tracing = "0.1"
 tracing-opentelemetry = "0.32"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
