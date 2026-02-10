@@ -4,7 +4,7 @@ default-members = ["facilitator"]
 resolver = "3"
 
 [workspace.package]
-version = "0.3.4"
+version = "0.3.5"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/facilitator"
