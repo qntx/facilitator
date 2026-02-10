@@ -1,76 +1,44 @@
-//! x402 Facilitator HTTP server entrypoint.
+//! HTTP server bootstrap for the x402 facilitator.
 //!
-//! This module initializes and runs the Axum-based HTTP server that exposes the x402 protocol
-//! interface for payment verification and settlement across multiple blockchain networks.
-//!
-//! # Endpoints
-//!
-//! | Method | Path | Description |
-//! |--------|------|-------------|
-//! | `GET` | `/verify` | Get supported verification schema |
-//! | `POST` | `/verify` | Verify a payment payload against requirements |
-//! | `GET` | `/settle` | Get supported settlement schema |
-//! | `POST` | `/settle` | Settle an accepted payment payload on-chain |
-//! | `GET` | `/supported` | List supported payment kinds (version/scheme/network) |
-//! | `GET` | `/health` | Health check endpoint |
-//!
-//! # Features
-//!
-//! - **Multi-chain support**: EIP-155 (EVM) and Solana networks
-//! - **`OpenTelemetry` tracing** (with `telemetry` feature): Distributed tracing and metrics
-//! - **CORS support**: Cross-origin requests for browser-based clients
-//! - **Graceful shutdown**: Signal-based shutdown with cleanup
-//!
-//! # Environment Variables
-//!
-//! - `HOST` - Server bind address (default: `0.0.0.0`)
-//! - `PORT` - Server port (default: `8080`)
-//! - `CONFIG` - Path to configuration file (default: `config.json`)
-//! - `OTEL_*` - `OpenTelemetry` configuration (when `telemetry` feature enabled)
+//! Reads TOML configuration, initialises chain providers and scheme handlers,
+//! then starts an Axum HTTP server with graceful shutdown support.
 
 use axum::Router;
 use axum::http::Method;
 use dotenvy::dotenv;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use tower_http::cors;
 
-use crate::handlers;
-use crate::local::FacilitatorLocal;
-use crate::util::SigDown;
+use crate::config::load_config;
+use crate::facilitator::FacilitatorLocal;
+use crate::routes;
+use crate::signal::SigDown;
 
 use r402::chain::ChainRegistry;
 use r402::chain::FromConfig;
 use r402::scheme::{SchemeBlueprints, SchemeRegistry};
 
 #[cfg(feature = "telemetry")]
-use crate::util::Telemetry;
+use crate::telemetry::Telemetry;
 #[cfg(feature = "chain-eip155")]
 use r402_evm::{V1Eip155Exact, V2Eip155Exact};
 #[cfg(feature = "chain-solana")]
 use r402_svm::{V1SolanaExact, V2SolanaExact};
 
-use crate::config::Config;
-
-/// Initializes the x402 facilitator server.
-///
-/// - Loads `.env` variables.
-/// - Initializes `OpenTelemetry` tracing.
-/// - Connects to Ethereum providers for supported networks.
-/// - Starts an Axum HTTP server with the x402 protocol handlers.
-///
-/// Binds to the address specified by the `HOST` and `PORT` env vars.
+/// Initialises and runs the x402 facilitator server.
 ///
 /// # Errors
 ///
-/// Returns an error if configuration loading, provider initialization,
+/// Returns an error if configuration loading, provider initialisation,
 /// or server binding fails.
 ///
 /// # Panics
 ///
 /// Panics if the rustls crypto provider cannot be installed.
 #[allow(clippy::cognitive_complexity, clippy::future_not_send)]
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // Initialize rustls crypto provider (ring)
     rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
         .expect("Failed to initialize rustls crypto provider");
@@ -87,11 +55,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         telemetry.http_tracing()
     };
 
-    let config = Config::load()?;
+    let config = load_config(config_path)?;
 
     let chain_registry = ChainRegistry::from_config(config.chains()).await?;
     let scheme_blueprints = {
-        #[allow(unused_mut)] // For when no chain features enabled
+        #[allow(unused_mut)]
         let mut scheme_blueprints = SchemeBlueprints::new();
         #[cfg(feature = "chain-eip155")]
         {
@@ -111,7 +79,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let facilitator = FacilitatorLocal::new(scheme_registry);
     let axum_state = Arc::new(facilitator);
 
-    let http_endpoints = Router::new().merge(handlers::routes().with_state(axum_state));
+    let http_endpoints = Router::new().merge(routes::routes().with_state(axum_state));
     #[cfg(feature = "telemetry")]
     let http_endpoints = http_endpoints.layer(telemetry_layer);
     let http_endpoints = http_endpoints.layer(

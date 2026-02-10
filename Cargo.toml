@@ -32,7 +32,9 @@ rustls = { version = "0.23", features = ["ring"] }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 
 # Config
+clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15"
+toml = "0.9"
 
 # Telemetry
 opentelemetry = "0.31"

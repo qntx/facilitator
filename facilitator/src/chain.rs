@@ -1,56 +1,156 @@
-//! Blockchain-specific types and providers for x402 payment processing.
+//! Blockchain chain types, configuration, and provider registry.
 //!
-//! This module provides abstractions for interacting with different blockchain networks
-//! in the x402 protocol. It supports multiple blockchain families:
+//! This module centralises everything related to blockchain networks:
 //!
-//! - **EIP-155 (EVM)**: Ethereum and EVM-compatible chains like Base, Polygon, Avalanche
-//! - **Solana**: The Solana blockchain
-//!
-//! # Architecture
-//!
-//! The module is organized around the concept of chain providers and chain identifiers:
-//!
-//! - [`ChainId`] - A CAIP-2 compliant chain identifier (e.g., `eip155:8453` for Base)
-//! - [`ChainProvider`] - Enum wrapping chain-specific providers
-//! - [`ChainRegistry`] - Registry of configured chain providers
-//!
-//! # Example
-//!
-//! ```ignore
-//! use r402::chain::{ChainId, ChainIdPattern};
-//!
-//! // Create a specific chain ID
-//! let base = ChainId::new("eip155", "8453");
-//!
-//! // Create a pattern that matches all EVM chains
-//! let all_evm = ChainIdPattern::wildcard("eip155");
-//! assert!(all_evm.matches(&base));
-//!
-//! // Create a pattern for specific chains
-//! let mainnet_chains = ChainIdPattern::set("eip155", ["1", "8453", "137"].into_iter().map(String::from).collect());
-//! assert!(mainnet_chains.matches(&base));
-//! ```
+//! - **Configuration** — [`ChainConfig`] / [`ChainsConfig`] with CAIP-2 keyed
+//!   TOML (de)serialisation.
+//! - **Providers** — [`ChainProvider`] enum wrapping chain-family–specific RPC
+//!   providers, plus [`FromConfig`] factories.
+//! - **Registry** — [`ChainRegistry`] initialisation from [`ChainsConfig`].
 
 use r402::chain::{ChainId, ChainProviderOps, ChainRegistry, FromConfig};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::ops::Deref;
+
 #[cfg(feature = "chain-eip155")]
 use r402_evm::chain as eip155;
+#[cfg(feature = "chain-eip155")]
+use r402_evm::chain::config::{Eip155ChainConfig, Eip155ChainConfigInner};
 #[cfg(feature = "chain-solana")]
 use r402_svm::chain as solana;
-use std::collections::HashMap;
+#[cfg(feature = "chain-solana")]
+use r402_svm::chain::config::{SolanaChainConfig, SolanaChainConfigInner};
 #[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
 use std::sync::Arc;
 
-use crate::config::{ChainConfig, ChainsConfig};
+// ── Configuration types ─────────────────────────────────────────────
 
-/// A blockchain provider that can interact with EVM, Solana, or Aptos chains.
+/// Chain-specific configuration variant.
 ///
-/// This enum wraps chain-specific providers and provides a unified interface
-/// for the facilitator to interact with different blockchain networks.
+/// Selected by the CAIP-2 namespace prefix of the chain identifier key
+/// (e.g. `"eip155:"` → EVM, `"solana:"` → Solana).
+#[derive(Debug, Clone)]
+pub enum ChainConfig {
+    /// EVM chain configuration (for chains with `"eip155:"` prefix).
+    #[cfg(feature = "chain-eip155")]
+    Eip155(Box<Eip155ChainConfig>),
+    /// Solana chain configuration (for chains with `"solana:"` prefix).
+    #[cfg(feature = "chain-solana")]
+    Solana(Box<SolanaChainConfig>),
+}
+
+/// Ordered collection of [`ChainConfig`] entries.
 ///
-/// # Variants
-///
-/// - `Eip155` - Provider for EVM-compatible chains (Ethereum, Base, Polygon, etc.)
-/// - `Solana` - Provider for the Solana blockchain
+/// Serialised as a TOML map keyed by CAIP-2 chain identifiers.
+#[derive(Debug, Clone, Default)]
+pub struct ChainsConfig(pub Vec<ChainConfig>);
+
+impl Deref for ChainsConfig {
+    type Target = Vec<ChainConfig>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Serialize for ChainsConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let chains = &self.0;
+        #[allow(unused_mut)] // For when no chain features enabled
+        let mut map = serializer.serialize_map(Some(chains.len()))?;
+        for chain_config in chains {
+            match chain_config {
+                #[cfg(feature = "chain-eip155")]
+                ChainConfig::Eip155(config) => {
+                    map.serialize_entry(&config.chain_id(), &config.inner)?;
+                }
+                #[cfg(feature = "chain-solana")]
+                ChainConfig::Solana(config) => {
+                    map.serialize_entry(&config.chain_id(), &config.inner)?;
+                }
+                #[allow(unreachable_patterns)]
+                _ => unreachable!("ChainConfig variant not enabled in this build"),
+            }
+        }
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ChainsConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{MapAccess, Visitor};
+        use std::fmt;
+
+        struct ChainsVisitor;
+
+        impl<'de> Visitor<'de> for ChainsVisitor {
+            type Value = ChainsConfig;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a map of chain identifiers to chain configurations")
+            }
+
+            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                #[allow(unused_mut)]
+                let mut chains = Vec::with_capacity(access.size_hint().unwrap_or(0));
+
+                while let Some(chain_id) = access.next_key::<ChainId>()? {
+                    let namespace = chain_id.namespace();
+                    #[allow(unused_variables)]
+                    let config = match namespace {
+                        #[cfg(feature = "chain-eip155")]
+                        eip155::EIP155_NAMESPACE => {
+                            let inner: Eip155ChainConfigInner = access.next_value()?;
+                            let config = Eip155ChainConfig {
+                                chain_reference: chain_id
+                                    .try_into()
+                                    .map_err(|e| serde::de::Error::custom(format!("{e}")))?,
+                                inner,
+                            };
+                            ChainConfig::Eip155(Box::new(config))
+                        }
+                        #[cfg(feature = "chain-solana")]
+                        solana::SOLANA_NAMESPACE => {
+                            let inner: SolanaChainConfigInner = access.next_value()?;
+                            let config = SolanaChainConfig {
+                                chain_reference: chain_id
+                                    .try_into()
+                                    .map_err(|e| serde::de::Error::custom(format!("{e}")))?,
+                                inner,
+                            };
+                            ChainConfig::Solana(Box::new(config))
+                        }
+                        _ => {
+                            return Err(serde::de::Error::custom(format!(
+                                "Unexpected namespace: {namespace}"
+                            )));
+                        }
+                    };
+                    #[allow(unreachable_code)]
+                    chains.push(config);
+                }
+
+                Ok(ChainsConfig(chains))
+            }
+        }
+
+        deserializer.deserialize_map(ChainsVisitor)
+    }
+}
+
+/// Unified blockchain provider wrapping chain-family–specific implementations.
 #[derive(Debug, Clone)]
 pub enum ChainProvider {
     /// EVM chain provider for EIP-155 compatible networks.
@@ -61,21 +161,10 @@ pub enum ChainProvider {
     Solana(Arc<solana::SolanaChainProvider>),
 }
 
-/// Creates a new chain provider from configuration.
-///
-/// This factory method inspects the configuration type and creates the appropriate
-/// chain-specific provider (EVM, Solana, or Aptos).
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - RPC connection fails
-/// - Signer configuration is invalid
-/// - Required configuration is missing
 #[async_trait::async_trait]
 impl FromConfig<ChainConfig> for ChainProvider {
     async fn from_config(chains: &ChainConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        #[allow(unused_variables)] // For when no chain features enabled
+        #[allow(unused_variables)]
         let provider = match chains {
             #[cfg(feature = "chain-eip155")]
             ChainConfig::Eip155(config) => {
@@ -87,10 +176,10 @@ impl FromConfig<ChainConfig> for ChainProvider {
                 let provider = solana::SolanaChainProvider::from_config(config).await?;
                 Self::Solana(Arc::new(provider))
             }
-            #[allow(unreachable_patterns)] // For when no chain features enabled
+            #[allow(unreachable_patterns)]
             _ => unreachable!("ChainConfig variant not enabled in this build"),
         };
-        #[allow(unreachable_code)] // For when no chain features enabled
+        #[allow(unreachable_code)]
         Ok(provider)
     }
 }
@@ -102,7 +191,7 @@ impl ChainProviderOps for ChainProvider {
             Self::Eip155(provider) => provider.signer_addresses(),
             #[cfg(feature = "chain-solana")]
             Self::Solana(provider) => provider.signer_addresses(),
-            #[allow(unreachable_patterns)] // For when no chain features enabled
+            #[allow(unreachable_patterns)]
             _ => unreachable!("ChainProvider variant not enabled in this build"),
         }
     }
@@ -113,20 +202,12 @@ impl ChainProviderOps for ChainProvider {
             Self::Eip155(provider) => provider.chain_id(),
             #[cfg(feature = "chain-solana")]
             Self::Solana(provider) => provider.chain_id(),
-            #[allow(unreachable_patterns)] // For when no chain features enabled
+            #[allow(unreachable_patterns)]
             _ => unreachable!("ChainProvider variant not enabled in this build"),
         }
     }
 }
 
-/// Creates a new chain registry from configuration.
-///
-/// Initializes providers for all configured chains. Each chain configuration
-/// is processed and a corresponding provider is created and stored.
-///
-/// # Errors
-///
-/// Returns an error if any chain provider fails to initialize.
 #[async_trait::async_trait]
 impl FromConfig<ChainsConfig> for ChainRegistry<ChainProvider> {
     async fn from_config(chains: &ChainsConfig) -> Result<Self, Box<dyn std::error::Error>> {
