@@ -159,26 +159,38 @@ impl Telemetry {
     }
 
     /// Initializes the tracer provider.
-    fn init_tracer_provider(&self, protocol: TelemetryProtocol) -> SdkTracerProvider {
+    ///
+    /// Returns `None` if the OTLP exporter cannot be built (graceful degradation).
+    fn init_tracer_provider(&self, protocol: TelemetryProtocol) -> Option<SdkTracerProvider> {
         let exporter = opentelemetry_otlp::SpanExporter::builder();
         let exporter = match protocol {
             TelemetryProtocol::HTTP => exporter.with_http().build(),
             TelemetryProtocol::GRPC => exporter.with_tonic().build(),
         };
-        let exporter = exporter.expect("Failed to build OTLP span exporter");
+        let exporter = match exporter {
+            Ok(e) => e,
+            Err(err) => {
+                eprintln!("Failed to build OTLP span exporter: {err}, falling back to console");
+                return None;
+            }
+        };
 
-        SdkTracerProvider::builder()
-            .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
-                1.0,
-            ))))
-            .with_id_generator(RandomIdGenerator::default())
-            .with_resource(self.resource())
-            .with_batch_exporter(exporter)
-            .build()
+        Some(
+            SdkTracerProvider::builder()
+                .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+                    1.0,
+                ))))
+                .with_id_generator(RandomIdGenerator::default())
+                .with_resource(self.resource())
+                .with_batch_exporter(exporter)
+                .build(),
+        )
     }
 
     /// Initializes the metrics provider.
-    fn init_meter_provider(&self, protocol: TelemetryProtocol) -> SdkMeterProvider {
+    ///
+    /// Returns `None` if the OTLP exporter cannot be built (graceful degradation).
+    fn init_meter_provider(&self, protocol: TelemetryProtocol) -> Option<SdkMeterProvider> {
         let exporter = opentelemetry_otlp::MetricExporter::builder();
         let exporter = match protocol {
             TelemetryProtocol::HTTP => exporter
@@ -190,7 +202,13 @@ impl Telemetry {
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
                 .build(),
         };
-        let exporter = exporter.expect("Failed to build OTLP metric exporter");
+        let exporter = match exporter {
+            Ok(e) => e,
+            Err(err) => {
+                eprintln!("Failed to build OTLP metric exporter: {err}, falling back to console");
+                return None;
+            }
+        };
 
         let reader = PeriodicReader::builder(exporter)
             .with_interval(Duration::from_secs(30))
@@ -206,7 +224,7 @@ impl Telemetry {
             .build();
 
         global::set_meter_provider(meter_provider.clone());
-        meter_provider
+        Some(meter_provider)
     }
 
     /// Registers tracing and metrics exporters.
@@ -221,26 +239,43 @@ impl Telemetry {
         if let Some(protocol) = telemetry_protocol {
             let tracer_provider = self.init_tracer_provider(protocol);
             let meter_provider = self.init_meter_provider(protocol);
-            let tracer = tracer_provider.tracer("tracing-otel-subscriber");
 
-            tracing_subscriber::registry()
-                .with(tracing_subscriber::filter::LevelFilter::INFO)
-                .with(tracing_subscriber::fmt::layer())
-                .with(MetricsLayer::new(meter_provider.clone()))
-                .with(OpenTelemetryLayer::new(tracer))
-                .init();
+            // Graceful degradation: if either provider fails, fall back to console-only
+            if let Some(ref tp) = tracer_provider {
+                let tracer = tp.tracer("tracing-otel-subscriber");
+                if let Some(ref mp) = meter_provider {
+                    tracing_subscriber::registry()
+                        .with(tracing_subscriber::filter::LevelFilter::INFO)
+                        .with(tracing_subscriber::fmt::layer())
+                        .with(MetricsLayer::new(mp.clone()))
+                        .with(OpenTelemetryLayer::new(tracer))
+                        .init();
+                } else {
+                    tracing_subscriber::registry()
+                        .with(tracing_subscriber::filter::LevelFilter::INFO)
+                        .with(tracing_subscriber::fmt::layer())
+                        .with(OpenTelemetryLayer::new(tracer))
+                        .init();
+                }
+                tracing::info!(
+                    "OpenTelemetry tracing exporter is enabled via {:?}",
+                    protocol
+                );
+            } else {
+                tracing_subscriber::registry()
+                    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+                    .with(tracing_subscriber::fmt::layer())
+                    .init();
+                tracing::warn!("OpenTelemetry exporters failed to initialize, using console only");
+            }
 
-            tracing::info!(
-                "OpenTelemetry tracing and metrics exporter is enabled via {:?}",
-                protocol
-            );
             TelemetryProviders {
-                tracer_provider: Some(tracer_provider),
-                meter_provider: Some(meter_provider),
+                tracer_provider,
+                meter_provider,
             }
         } else {
             tracing_subscriber::registry()
-                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "trace".into()))
+                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
                 .with(tracing_subscriber::fmt::layer())
                 .init();
 

@@ -4,12 +4,15 @@
 //! then starts an Axum HTTP server with graceful shutdown support.
 
 use axum::Router;
-use axum::http::Method;
+use axum::extract::DefaultBodyLimit;
+use axum::http::{Method, StatusCode};
 use dotenvy::dotenv;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::cors;
+use tower_http::timeout::TimeoutLayer;
 
 use crate::config::load_config;
 use crate::facilitator::FacilitatorLocal;
@@ -82,12 +85,18 @@ pub async fn run(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let http_endpoints = Router::new().merge(routes::routes().with_state(axum_state));
     #[cfg(feature = "telemetry")]
     let http_endpoints = http_endpoints.layer(telemetry_layer);
-    let http_endpoints = http_endpoints.layer(
-        cors::CorsLayer::new()
-            .allow_origin(cors::Any)
-            .allow_methods([Method::GET, Method::POST])
-            .allow_headers(cors::Any),
-    );
+    let http_endpoints = http_endpoints
+        .layer(
+            cors::CorsLayer::new()
+                .allow_origin(cors::Any)
+                .allow_methods([Method::GET, Method::POST])
+                .allow_headers(cors::Any),
+        )
+        .layer(DefaultBodyLimit::max(64 * 1024))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_secs(45),
+        ));
 
     let addr = SocketAddr::new(config.host(), config.port());
     #[cfg(feature = "telemetry")]

@@ -2199,7 +2199,7 @@ dependencies = [
 
 [[package]]
 name = "facilitator"
-version = "0.3.2"
+version = "0.3.4"
 dependencies = [
  "async-trait",
  "axum",
