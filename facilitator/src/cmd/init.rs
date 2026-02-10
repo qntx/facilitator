@@ -13,6 +13,7 @@ use std::path::Path;
 ///
 /// Returns an error if the file already exists (without `--force`) or if
 /// writing fails.
+#[allow(clippy::print_stderr)]
 pub fn run(output: &Path, force: bool) -> Result<(), Box<dyn std::error::Error>> {
     if output.exists() && !force {
         return Err(format!(

@@ -11,6 +11,7 @@ use std::path::Path;
 ///
 /// Returns an error if configuration loading, provider initialisation,
 /// or server binding fails.
+#[allow(clippy::future_not_send)]
 pub async fn run(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     crate::server::run(config_path).await
 }
