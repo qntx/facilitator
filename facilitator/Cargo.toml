@@ -6,7 +6,51 @@ license.workspace = true
 repository.workspace = true
 description.workspace = true
 
+[[bin]]
+name = "facilitator"
+path = "src/main.rs"
+
+[features]
+default = ["telemetry", "chain-eip155", "chain-solana"]
+chain-eip155 = ["dep:r402-evm"]
+chain-solana = ["dep:r402-svm"]
+telemetry = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry-semantic-conventions",
+    "dep:opentelemetry-stdout",
+    "dep:tracing",
+    "dep:tracing-opentelemetry",
+    "dep:tracing-subscriber",
+    "r402/telemetry",
+    "r402-evm?/telemetry",
+    "r402-svm?/telemetry",
+]
+
 [dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true }
+dotenvy = { workspace = true }
+r402 = { workspace = true }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tower-http = { workspace = true }
+
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry-semantic-conventions = { workspace = true, optional = true }
+opentelemetry-stdout = { workspace = true, optional = true }
+r402-evm = { workspace = true, optional = true }
+r402-svm = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 
 [lints]
 workspace = true

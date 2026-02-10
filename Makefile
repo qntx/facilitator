@@ -1,4 +1,4 @@
-# Makefile for x402 LLM Gateway
+# Makefile for x402 Facilitator
 
 .PHONY: all
 all: pre-commit
@@ -13,7 +13,7 @@ build:
 update:
 	cargo update
 
-# Run the gateway in release mode
+# Run the facilitator in release mode
 .PHONY: run
 run:
 	cargo run --release
@@ -27,6 +27,7 @@ test:
 .PHONY: clippy
 clippy:
 	cargo +nightly clippy --fix \
+		--workspace \
 		--all-targets \
 		--allow-dirty \
 		--allow-staged \
@@ -51,6 +52,11 @@ cliff:
 .PHONY: udeps
 udeps:
 	cargo +nightly udeps
+
+# Build Docker image
+.PHONY: docker
+docker:
+	docker build -t x402-facilitator .
 
 # Run pre-commit checks
 .PHONY: pre-commit

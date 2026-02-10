@@ -20,7 +20,7 @@ debug/
 # Environment and secrets
 .env
 .env.*
-gateway.toml
+config.json
 
 # OS
 .DS_Store

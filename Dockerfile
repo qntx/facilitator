@@ -1,19 +1,19 @@
 # ============================================================================
-# x402 LLM Gateway — Production Dockerfile
+# x402 Facilitator — Production Dockerfile
 #
 # Multi-stage build:
-#   1. chef   — cache dependency layer via cargo-chef
-#   2. build  — compile the release binary
-#   3. runtime — minimal distroless image with only the binary
+#   1. chef    — cache dependency layer via cargo-chef
+#   2. planner — prepare the dependency recipe
+#   3. builder — compile the release binary
+#   4. runtime — minimal image with only the binary
 #
 # Build:
-#   docker build -t x402-gateway .
+#   docker build -t x402-facilitator .
 #
 # Run:
-#   docker run -p 3000:3000 -v ./gateway.toml:/app/gateway.toml x402-gateway
+#   docker run -p 4021:4021 -v ./config.json:/app/config.json x402-facilitator
 # ============================================================================
 
-# Pin the Rust toolchain version for reproducible builds.
 ARG RUST_VERSION=1.93
 
 # ------------------ Stage 1: Chef (dependency caching) ----------------------
@@ -31,45 +31,33 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ------------------ Stage 3: Build dependencies + binary --------------------
 FROM chef AS builder
 
-# Copy the dependency recipe and build dependencies first (cached layer).
 COPY --from=planner /src/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
-# Copy full source and build the actual binary.
 COPY . .
-RUN cargo build --release --bin x402-llm-gateway \
-    && strip target/release/x402-llm-gateway
+RUN cargo build --release --bin facilitator \
+    && strip target/release/facilitator
 
 # ------------------ Stage 4: Minimal runtime image --------------------------
 FROM debian:bookworm-slim AS runtime
 
-# Install only the minimal runtime dependencies (TLS).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create a non-root user for the gateway process.
-RUN groupadd --gid 1000 gateway \
-    && useradd --uid 1000 --gid gateway --shell /bin/false --create-home gateway
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system facilitator \
+    && useradd --system --gid facilitator --create-home facilitator
 
 WORKDIR /app
 
-# Copy the compiled binary from the builder stage.
-COPY --from=builder /src/target/release/x402-llm-gateway /app/x402-gateway
+COPY --from=builder /src/target/release/facilitator /usr/local/bin/facilitator
 
-# Own everything by the non-root user.
-RUN chown -R gateway:gateway /app
+RUN chown facilitator:facilitator /app
 
-USER gateway
+USER facilitator
 
-# Default port exposed by the gateway.
-EXPOSE 3000
+EXPOSE 4021
 
-# Health check — TCP probe via the built-in `health` subcommand.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["/app/x402-gateway", "health", "--port", "3000"]
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -sf http://localhost:4021/health || exit 1
 
-# The config file is expected to be mounted at /app/gateway.toml.
-# Override with: -v /path/to/your/gateway.toml:/app/gateway.toml
-ENTRYPOINT ["/app/x402-gateway"]
-CMD ["serve", "--config", "/app/gateway.toml"]
+ENTRYPOINT ["facilitator"]

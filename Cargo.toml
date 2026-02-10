@@ -11,6 +11,38 @@ repository = "https://github.com/qntx/x402-facilitator"
 description = "X402 Facilitator"
 
 [workspace.dependencies]
+# r402 SDK
+r402 = { version = "0.3", features = ["cli"] }
+r402-evm = { version = "0.3", features = ["facilitator"] }
+r402-svm = { version = "0.3", features = ["facilitator"] }
+
+# Core
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+# Web
+axum = "0.8"
+rustls = { version = "0.23", features = ["ring"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
+# Config
+dotenvy = "0.15"
+
+# Telemetry
+opentelemetry = "0.31"
+opentelemetry_sdk = "0.31"
+opentelemetry-otlp = { version = "0.31", features = ["metrics", "grpc-tonic"] }
+opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
+opentelemetry-stdout = { version = "0.31", features = ["trace", "metrics"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.32"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [profile.release]
 codegen-units = 1
