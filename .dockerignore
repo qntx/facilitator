@@ -31,6 +31,9 @@ Dockerfile
 .dockerignore
 docker-compose*.yml
 
+# Deployment configs (runtime only, not needed in build)
+deploy/
+
 # Rust toolchain (the Dockerfile base image already provides the correct version)
 rust-toolchain.toml
 

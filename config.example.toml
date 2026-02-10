@@ -116,5 +116,5 @@ rpc = "https://api.devnet.solana.com"
 # Uncomment below ONLY if you need to restrict which schemes/chains:
 #
 # [[schemes]]
-# scheme = "v2-eip155-exact"
-# chains = ["eip155:8453", "eip155:84532"]
+# id = "v2-eip155-exact"
+# chains = "eip155:{8453,84532}"

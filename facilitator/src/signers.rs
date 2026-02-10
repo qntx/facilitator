@@ -189,42 +189,20 @@ pub fn preprocess_config(raw: &str) -> Result<String, Box<dyn std::error::Error>
 
         #[cfg(feature = "chain-eip155")]
         if !evm_chain_ids.is_empty() {
-            let chain_values: Vec<toml::Value> = evm_chain_ids
-                .iter()
-                .map(|id| toml::Value::String(id.clone()))
-                .collect();
-
-            for scheme_name in &["v1-eip155-exact", "v2-eip155-exact"] {
+            for scheme_id in &["v1-eip155-exact", "v2-eip155-exact"] {
                 let mut entry = toml::map::Map::new();
-                entry.insert(
-                    "scheme".to_owned(),
-                    toml::Value::String((*scheme_name).to_owned()),
-                );
-                entry.insert(
-                    "chains".to_owned(),
-                    toml::Value::Array(chain_values.clone()),
-                );
+                entry.insert("id".to_owned(), toml::Value::String((*scheme_id).to_owned()));
+                entry.insert("chains".to_owned(), toml::Value::String("eip155:*".to_owned()));
                 schemes.push(toml::Value::Table(entry));
             }
         }
 
         #[cfg(feature = "chain-solana")]
         if !solana_chain_ids.is_empty() {
-            let chain_values: Vec<toml::Value> = solana_chain_ids
-                .iter()
-                .map(|id| toml::Value::String(id.clone()))
-                .collect();
-
-            for scheme_name in &["v1-solana-exact", "v2-solana-exact"] {
+            for scheme_id in &["v1-solana-exact", "v2-solana-exact"] {
                 let mut entry = toml::map::Map::new();
-                entry.insert(
-                    "scheme".to_owned(),
-                    toml::Value::String((*scheme_name).to_owned()),
-                );
-                entry.insert(
-                    "chains".to_owned(),
-                    toml::Value::Array(chain_values.clone()),
-                );
+                entry.insert("id".to_owned(), toml::Value::String((*scheme_id).to_owned()));
+                entry.insert("chains".to_owned(), toml::Value::String("solana:*".to_owned()));
                 schemes.push(toml::Value::Table(entry));
             }
         }
