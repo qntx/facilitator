@@ -24,8 +24,6 @@ use r402_svm::chain::config::{SolanaChainConfig, SolanaChainConfigInner};
 #[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
 use std::sync::Arc;
 
-// ── Configuration types ─────────────────────────────────────────────
-
 /// Chain-specific configuration variant.
 ///
 /// Selected by the CAIP-2 namespace prefix of the chain identifier key

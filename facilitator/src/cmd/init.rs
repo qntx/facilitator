@@ -24,9 +24,8 @@ pub fn run(output: &Path, force: bool) -> Result<(), Box<dyn std::error::Error>>
     }
 
     let content = generate_default_config();
-    fs::write(output, content).map_err(|e| {
-        format!("Failed to write config file '{}': {e}", output.display())
-    })?;
+    fs::write(output, content)
+        .map_err(|e| format!("Failed to write config file '{}': {e}", output.display()))?;
 
     eprintln!("Config file written to {}", output.display());
     Ok(())
