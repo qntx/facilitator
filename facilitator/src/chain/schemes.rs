@@ -1,41 +1,18 @@
-//! Scheme builder implementations for the x402 facilitator.
-//!
-//! This module provides [`SchemeBuilder`] implementations for all supported
-//! payment schemes. These builders create facilitator instances from the generic
-//! [`ChainProvider`] enum by extracting the appropriate chain-specific provider.
-//!
-//! # Supported Schemes
-//!
-//! | Scheme | Chains | Description |
-//! |--------|--------|-------------|
-//! | [`Eip155Exact`] | EIP-155 (EVM) | Exact amount payments on EVM |
-//! | [`SolanaExact`] | Solana | Exact amount payments on Solana |
-//!
-//! # Example
-//!
-//! ```ignore
-//! use r402::scheme::SchemeRegistry;
-//! use r402_evm::Eip155Exact;
-//! use crate::chain::ChainProvider;
-//!
-//! let mut registry = SchemeRegistry::new();
-//! registry.register(&Eip155Exact, &provider, None)?;
-//! ```
+//! [`SchemeBuilder`] implementations bridging [`ChainProvider`] to scheme handlers.
 
-#[allow(unused_imports)] // For when no chain features are enabled
+#[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
 use std::sync::Arc;
 
-#[allow(unused_imports)] // For when no chain features are enabled
+#[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
 use r402::facilitator::Facilitator;
-#[allow(unused_imports)] // For when no chain features are enabled
+#[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
 use r402::scheme::SchemeBuilder;
 #[cfg(feature = "chain-eip155")]
 use r402_evm::Eip155Exact;
 #[cfg(feature = "chain-solana")]
 use r402_svm::SolanaExact;
 
-#[allow(unused_imports)] // For when no chain features are enabled
-use crate::chain::ChainProvider;
+use super::ChainProvider;
 
 #[cfg(feature = "chain-eip155")]
 impl SchemeBuilder<&ChainProvider> for Eip155Exact {

@@ -23,9 +23,9 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::chain::build_chain_registry;
 use crate::config::load_config;
+use crate::error::Error;
 use crate::facilitator::FacilitatorLocal;
 use crate::routes;
-use crate::signal::SigDown;
 #[cfg(feature = "telemetry")]
 use crate::telemetry::Telemetry;
 
@@ -40,7 +40,7 @@ use crate::telemetry::Telemetry;
 ///
 /// Panics if the rustls crypto provider cannot be installed.
 #[allow(clippy::cognitive_complexity, clippy::future_not_send)]
-pub async fn run(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(config_path: &Path) -> Result<(), Error> {
     // Initialize rustls crypto provider (ring)
     rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
         .expect("Failed to initialize rustls crypto provider");
@@ -49,13 +49,12 @@ pub async fn run(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
     #[cfg(feature = "telemetry")]
-    let telemetry_layer = {
-        let telemetry = Telemetry::new()
-            .with_name(env!("CARGO_PKG_NAME"))
-            .with_version(env!("CARGO_PKG_VERSION"))
-            .register();
-        telemetry.http_tracing()
-    };
+    let telemetry_guard = Telemetry::new()
+        .with_name(env!("CARGO_PKG_NAME"))
+        .with_version(env!("CARGO_PKG_VERSION"))
+        .register();
+    #[cfg(feature = "telemetry")]
+    let telemetry_layer = telemetry_guard.http_tracing();
 
     let config = load_config(config_path)?;
 
@@ -129,14 +128,29 @@ pub async fn run(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(addr).await;
     #[cfg(feature = "telemetry")]
     let listener = listener.inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e));
-    let listener = listener?;
+    let listener = listener.map_err(|e| Error::Server(format!("Failed to bind: {e}")))?;
 
-    let sig_down = SigDown::try_new()?;
-    let axum_cancellation_token = sig_down.cancellation_token();
-    let axum_graceful_shutdown = async move { axum_cancellation_token.cancelled().await };
     axum::serve(listener, http_endpoints)
-        .with_graceful_shutdown(axum_graceful_shutdown)
-        .await?;
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .map_err(|e| Error::Server(format!("Server error: {e}")))?;
 
     Ok(())
+}
+
+/// Wait for a shutdown signal (Ctrl+C on all platforms, SIGTERM on Unix).
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigterm = signal(SignalKind::terminate()).expect("failed to register SIGTERM");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = sigterm.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }

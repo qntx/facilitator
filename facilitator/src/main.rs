@@ -9,26 +9,25 @@
 //! ```
 
 mod chain;
-mod cli;
 mod cmd;
 mod config;
+mod error;
 mod facilitator;
 mod routes;
-mod schemes;
-mod signal;
 mod signers;
 #[cfg(feature = "telemetry")]
 mod telemetry;
 
 use clap::Parser;
-use cli::{Cli, Commands};
+use cmd::{Cli, Commands};
+use error::Error;
 
 #[tokio::main]
 #[allow(clippy::print_stderr)]
 async fn main() {
     let cli = Cli::parse();
 
-    let result = match cli.command {
+    let result: Result<(), Error> = match cli.command {
         Commands::Init { output, force } => cmd::init::run(&output, force),
         Commands::Serve { config } => cmd::serve::run(&config).await,
     };

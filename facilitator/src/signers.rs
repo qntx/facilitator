@@ -16,6 +16,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::error::Error;
+
 /// Default EVM BIP-44 derivation path (`MetaMask` / Trezor compatible).
 #[cfg(feature = "chain-eip155")]
 const DEFAULT_EVM_PATH: &str = "m/44'/60'/0'/0/0";
@@ -26,12 +28,14 @@ const DEFAULT_SOLANA_PATH: &str = "m/44'/501'/0'/0'";
 
 /// Resolve an environment-variable reference (`$VAR` or `${VAR}`), returning
 /// the literal string unchanged if it does not match either pattern.
-fn resolve_env(value: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn resolve_env(value: &str) -> Result<String, Error> {
     // ${VAR} syntax
     if value.starts_with("${") && value.ends_with('}') {
         let var_name = &value[2..value.len() - 1];
         return std::env::var(var_name).map_err(|_| {
-            format!("Environment variable '{var_name}' not found (referenced as '{value}')").into()
+            Error::Signer(format!(
+                "env var '{var_name}' not found (referenced as '{value}')"
+            ))
         });
     }
     // $VAR syntax
@@ -39,8 +43,9 @@ fn resolve_env(value: &str) -> Result<String, Box<dyn std::error::Error>> {
         let var_name = &value[1..];
         if var_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
             return std::env::var(var_name).map_err(|_| {
-                format!("Environment variable '{var_name}' not found (referenced as '{value}')")
-                    .into()
+                Error::Signer(format!(
+                    "env var '{var_name}' not found (referenced as '{value}')"
+                ))
             });
         }
     }
@@ -54,14 +59,13 @@ fn derive_evm_key(
     mnemonic: &str,
     passphrase: Option<&str>,
     path: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let wallet = kobe::Wallet::from_mnemonic(mnemonic, passphrase)?;
+) -> Result<String, Error> {
+    let wallet = kobe::Wallet::from_mnemonic(mnemonic, passphrase)
+        .map_err(|e| Error::Signer(format!("mnemonic parse error: {e}")))?;
     let deriver = kobe_eth::Deriver::new(&wallet);
-    let derived = if let Some(custom_path) = path {
-        deriver.derive_path(custom_path)?
-    } else {
-        deriver.derive_path(DEFAULT_EVM_PATH)?
-    };
+    let derived = deriver
+        .derive_path(path.unwrap_or(DEFAULT_EVM_PATH))
+        .map_err(|e| Error::Signer(format!("EVM key derivation error: {e}")))?;
     Ok(format!("0x{}", &*derived.private_key_hex))
 }
 
@@ -71,20 +75,19 @@ fn derive_solana_key(
     mnemonic: &str,
     passphrase: Option<&str>,
     path: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let wallet = kobe::Wallet::from_mnemonic(mnemonic, passphrase)?;
+) -> Result<String, Error> {
+    let wallet = kobe::Wallet::from_mnemonic(mnemonic, passphrase)
+        .map_err(|e| Error::Signer(format!("mnemonic parse error: {e}")))?;
     let deriver = kobe_sol::Deriver::new(&wallet);
-    let derived = if let Some(custom_path) = path {
-        deriver.derive_path(custom_path)?
-    } else {
-        deriver.derive_path(DEFAULT_SOLANA_PATH)?
-    };
+    let derived = deriver
+        .derive_path(path.unwrap_or(DEFAULT_SOLANA_PATH))
+        .map_err(|e| Error::Signer(format!("Solana key derivation error: {e}")))?;
 
     // Upstream SolanaPrivateKey expects 64-byte base58: [secret(32) | public(32)]
-    let secret_bytes =
-        hex::decode(&*derived.private_key_hex).map_err(|e| format!("hex decode error: {e}"))?;
-    let public_bytes =
-        hex::decode(&derived.public_key_hex).map_err(|e| format!("hex decode error: {e}"))?;
+    let secret_bytes = hex::decode(&*derived.private_key_hex)
+        .map_err(|e| Error::Signer(format!("hex decode error: {e}")))?;
+    let public_bytes = hex::decode(&derived.public_key_hex)
+        .map_err(|e| Error::Signer(format!("hex decode error: {e}")))?;
 
     let mut keypair = Vec::with_capacity(64);
     keypair.extend_from_slice(&secret_bytes);
@@ -92,19 +95,17 @@ fn derive_solana_key(
     Ok(bs58::encode(&keypair).into_string())
 }
 
-/// Pre-process raw TOML: extract `[signers]`, derive keys if needed, inject
-/// into each chain entry, and auto-generate `[[schemes]]` when absent.
+/// Pre-process raw TOML: extract `[signers]`, resolve env vars, derive keys,
+/// and inject signers into each chain entry.
 ///
-/// Returns the modified TOML string ready for upstream deserialization.
+/// Returns the TOML document (as a `BTreeMap`) ready for scheme generation and
+/// final deserialization.
 ///
 /// # Errors
 ///
 /// Returns an error if environment variable resolution, mnemonic parsing,
 /// or key derivation fails.
-pub fn preprocess_config(raw: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let mut doc: BTreeMap<String, toml::Value> =
-        toml::from_str(raw).map_err(|e| format!("TOML parse error: {e}"))?;
-
+pub fn preprocess_signers(doc: &mut BTreeMap<String, toml::Value>) -> Result<(), Error> {
     let signers_table = doc.remove("signers");
 
     #[allow(unused_mut)]
@@ -125,11 +126,10 @@ pub fn preprocess_config(raw: &str) -> Result<String, Box<dyn std::error::Error>
             let passphrase = signers
                 .get("passphrase")
                 .and_then(|v| v.as_str())
-                .map(|s| resolve_env(s))
+                .map(resolve_env)
                 .transpose()?;
             let passphrase_ref = passphrase.as_deref();
 
-            // Derive EVM key from mnemonic if no direct evm key provided
             #[cfg(feature = "chain-eip155")]
             if evm_signers.is_none() {
                 let evm_path = signers.get("evm_derivation_path").and_then(|v| v.as_str());
@@ -137,7 +137,6 @@ pub fn preprocess_config(raw: &str) -> Result<String, Box<dyn std::error::Error>
                 evm_signers = Some(toml::Value::Array(vec![toml::Value::String(key)]));
             }
 
-            // Derive Solana key from mnemonic if no direct solana key provided
             #[cfg(feature = "chain-solana")]
             if solana_signer.is_none() {
                 let sol_path = signers
@@ -149,76 +148,25 @@ pub fn preprocess_config(raw: &str) -> Result<String, Box<dyn std::error::Error>
         }
     }
 
-    #[allow(unused_mut)]
-    let mut evm_chain_ids: Vec<String> = Vec::new();
-    #[allow(unused_mut)]
-    let mut solana_chain_ids: Vec<String> = Vec::new();
-
+    // Inject global signers into chain entries that don't have their own
     if let Some(toml::Value::Table(chains)) = doc.get_mut("chains") {
         for (chain_id, chain_val) in chains.iter_mut() {
             if let toml::Value::Table(chain_table) = chain_val {
                 if chain_id.starts_with("eip155:") {
-                    evm_chain_ids.push(chain_id.clone());
-                    // Inject global EVM signers if chain doesn't have its own
                     if !chain_table.contains_key("signers")
                         && let Some(ref signers_val) = evm_signers
                     {
                         chain_table.insert("signers".to_owned(), signers_val.clone());
                     }
-                } else if chain_id.starts_with("solana:") {
-                    solana_chain_ids.push(chain_id.clone());
-                    // Inject global Solana signer if chain doesn't have its own
-                    if !chain_table.contains_key("signer")
-                        && let Some(ref signer_val) = solana_signer
-                    {
-                        chain_table.insert("signer".to_owned(), signer_val.clone());
-                    }
+                } else if chain_id.starts_with("solana:")
+                    && !chain_table.contains_key("signer")
+                    && let Some(ref signer_val) = solana_signer
+                {
+                    chain_table.insert("signer".to_owned(), signer_val.clone());
                 }
             }
         }
     }
 
-    let needs_schemes = match doc.get("schemes") {
-        None => true,
-        Some(toml::Value::Array(arr)) => arr.is_empty(),
-        _ => false,
-    };
-
-    if needs_schemes {
-        let mut schemes = Vec::new();
-
-        #[cfg(feature = "chain-eip155")]
-        if !evm_chain_ids.is_empty() {
-            let mut entry = toml::map::Map::new();
-            entry.insert(
-                "id".to_owned(),
-                toml::Value::String("eip155-exact".to_owned()),
-            );
-            entry.insert(
-                "chains".to_owned(),
-                toml::Value::String("eip155:*".to_owned()),
-            );
-            schemes.push(toml::Value::Table(entry));
-        }
-
-        #[cfg(feature = "chain-solana")]
-        if !solana_chain_ids.is_empty() {
-            let mut entry = toml::map::Map::new();
-            entry.insert(
-                "id".to_owned(),
-                toml::Value::String("solana-exact".to_owned()),
-            );
-            entry.insert(
-                "chains".to_owned(),
-                toml::Value::String("solana:*".to_owned()),
-            );
-            schemes.push(toml::Value::Table(entry));
-        }
-
-        if !schemes.is_empty() {
-            doc.insert("schemes".to_owned(), toml::Value::Array(schemes));
-        }
-    }
-
-    toml::to_string(&doc).map_err(|e| format!("Failed to serialize processed config: {e}").into())
+    Ok(())
 }

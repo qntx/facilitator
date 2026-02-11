@@ -38,17 +38,14 @@ impl Facilitator for FacilitatorLocal {
     {
         Box::pin(async move {
             // Payment-level routing failure → 200 + Invalid (matches CDP behavior)
-            let handler = match request
+            let Some(handler) = request
                 .scheme_slug()
                 .and_then(|slug| self.handlers.by_slug(&slug))
-            {
-                Some(h) => h,
-                None => {
-                    return Ok(proto::VerifyResponse::invalid(
-                        None,
-                        "unsupported_scheme".into(),
-                    ));
-                }
+            else {
+                return Ok(proto::VerifyResponse::invalid(
+                    None,
+                    "unsupported_scheme".into(),
+                ));
             };
             handler.verify(request).await
         })
@@ -61,19 +58,16 @@ impl Facilitator for FacilitatorLocal {
     {
         Box::pin(async move {
             // Payment-level routing failure → 200 + Error (matches CDP behavior)
-            let handler = match request
+            let Some(handler) = request
                 .scheme_slug()
                 .and_then(|slug| self.handlers.by_slug(&slug))
-            {
-                Some(h) => h,
-                None => {
-                    return Ok(proto::SettleResponse::Error {
-                        reason: "unsupported_scheme".into(),
-                        message: Some("No handler registered for this payment scheme".into()),
-                        payer: None,
-                        network: String::new(),
-                    });
-                }
+            else {
+                return Ok(proto::SettleResponse::Error {
+                    reason: "unsupported_scheme".into(),
+                    message: Some("No handler registered for this payment scheme".into()),
+                    payer: None,
+                    network: String::new(),
+                });
             };
             handler.settle(request).await
         })
@@ -129,7 +123,7 @@ pub fn error_to_settle_response(error: &FacilitatorError) -> proto::SettleRespon
     }
 }
 
-/// Serializes an [`ErrorReason`] enum variant to its snake_case string representation.
+/// Serializes an [`ErrorReason`] enum variant to its `snake_case` string representation.
 fn error_reason_string(reason: proto::ErrorReason) -> String {
     serde_json::to_value(reason)
         .ok()

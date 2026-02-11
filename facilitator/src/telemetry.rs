@@ -2,16 +2,6 @@
 //!
 //! Provides [`Telemetry`] for configuring distributed tracing and metrics
 //! collection via OTLP exporters. Only available with the `telemetry` feature.
-//!
-//! # Environment Variables
-//!
-//! | Variable | Description |
-//! |----------|-------------|
-//! | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint |
-//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol (`http/protobuf` or `grpc`) |
-//! | `OTEL_SERVICE_NAME` | Service name for traces |
-//! | `OTEL_SERVICE_VERSION` | Service version |
-//! | `OTEL_SERVICE_DEPLOYMENT` | Deployment environment |
 
 use std::env;
 use std::time::Duration;
@@ -28,54 +18,51 @@ use opentelemetry_semantic_conventions::{
     SCHEMA_URL,
     attribute::{DEPLOYMENT_ENVIRONMENT_NAME, SERVICE_VERSION},
 };
-use serde::{Deserialize, Serialize};
 use tower_http::trace::{MakeSpan, OnResponse, TraceLayer};
 use tracing::Span;
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Resolve an env var with a programmatic fallback.
+fn resolve_env(env_key: &str, fallback: Option<&Value>) -> Option<Value> {
+    env::var(env_key)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .map(Value::from)
+        .or_else(|| fallback.cloned())
+}
+
+/// Detects OTLP protocol from environment. Returns `None` if OTEL is not configured.
+fn detect_protocol() -> Option<OtlpProtocol> {
+    let is_enabled = env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok()
+        || env::var("OTEL_EXPORTER_OTLP_HEADERS").is_ok()
+        || env::var("OTEL_EXPORTER_OTLP_PROTOCOL").is_ok();
+    is_enabled.then(|| {
+        env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
+            .ok()
+            .map_or(OtlpProtocol::Http, |s| match s.as_str() {
+                "grpc" => OtlpProtocol::Grpc,
+                _ => OtlpProtocol::Http,
+            })
+    })
+}
+
 /// Supported OTLP transport protocols.
-#[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-enum TelemetryProtocol {
-    /// `http/protobuf` protocol.
-    #[serde(rename = "http/protobuf")]
-    HTTP,
-    /// `grpc` protocol.
-    #[serde(rename = "grpc")]
-    GRPC,
+#[derive(Debug, Clone, Copy)]
+enum OtlpProtocol {
+    Http,
+    Grpc,
 }
 
-impl TelemetryProtocol {
-    /// Detects protocol from `OTEL_*` environment variables.
-    /// Returns `None` if telemetry is not enabled.
-    pub fn from_env() -> Option<Self> {
-        let is_enabled = env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok()
-            || env::var("OTEL_EXPORTER_OTLP_HEADERS").is_ok()
-            || env::var("OTEL_EXPORTER_OTLP_PROTOCOL").is_ok();
-        is_enabled.then(|| {
-            env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
-                .ok()
-                .map_or(Self::HTTP, |s| match s.as_str() {
-                    "grpc" => Self::GRPC,
-                    _ => Self::HTTP,
-                })
-        })
-    }
-}
-
-/// Service identity and metadata for telemetry resources.
+/// Service identity for telemetry resources.
 ///
-/// Values can be set programmatically or overridden via environment variables
-/// (`OTEL_SERVICE_NAME`, `OTEL_SERVICE_VERSION`, `OTEL_SERVICE_DEPLOYMENT`).
-#[derive(Clone, Debug, Default)]
+/// Values can be set programmatically or overridden via `OTEL_SERVICE_NAME`,
+/// `OTEL_SERVICE_VERSION`, `OTEL_SERVICE_DEPLOYMENT` environment variables.
+#[derive(Debug, Default)]
 pub struct Telemetry {
-    /// Optional service name.
-    pub name: Option<Value>,
-    /// Optional service version.
-    pub version: Option<Value>,
-    /// Optional deployment environment.
-    pub deployment: Option<Value>,
+    name: Option<Value>,
+    version: Option<Value>,
+    deployment: Option<Value>,
 }
 
 impl Telemetry {
@@ -87,70 +74,33 @@ impl Telemetry {
 
     /// Sets the service name.
     #[must_use]
-    #[allow(dead_code)]
-    pub fn with_name(&self, name: impl Into<Value>) -> Self {
-        let mut this = self.clone();
-        this.name = Some(name.into());
-        this
+    pub fn with_name(mut self, name: impl Into<Value>) -> Self {
+        self.name = Some(name.into());
+        self
     }
 
     /// Sets the service version.
     #[must_use]
-    #[allow(dead_code)]
-    pub fn with_version(&self, version: impl Into<Value>) -> Self {
-        let mut this = self.clone();
-        this.version = Some(version.into());
-        this
-    }
-
-    /// Sets the deployment environment (e.g. `"production"`, `"staging"`).
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn with_deployment(&self, deployment: impl Into<Value>) -> Self {
-        let mut this = self.clone();
-        this.deployment = Some(deployment.into());
-        this
-    }
-
-    /// Resolves the service name (`OTEL_SERVICE_NAME` env → programmatic value).
-    pub fn name(&self) -> Option<Value> {
-        env::var("OTEL_SERVICE_NAME")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .map(Value::from)
-            .or_else(|| self.name.clone())
-    }
-
-    /// Resolves the service version (`OTEL_SERVICE_VERSION` env → programmatic value).
-    pub fn version(&self) -> Option<Value> {
-        env::var("OTEL_SERVICE_VERSION")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .map(Value::from)
-            .or_else(|| self.version.clone())
-    }
-
-    /// Resolves the deployment environment (`OTEL_SERVICE_DEPLOYMENT` env → programmatic value).
-    pub fn deployment(&self) -> Option<Value> {
-        env::var("OTEL_SERVICE_DEPLOYMENT")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .map(Value::from)
-            .or_else(|| self.deployment.clone())
+    pub fn with_version(mut self, version: impl Into<Value>) -> Self {
+        self.version = Some(version.into());
+        self
     }
 
     /// Builds an `OpenTelemetry` [`Resource`] from the resolved service identity.
-    #[must_use]
-    pub fn resource(&self) -> Resource {
+    fn resource(&self) -> Resource {
+        let name = resolve_env("OTEL_SERVICE_NAME", self.name.as_ref());
+        let version = resolve_env("OTEL_SERVICE_VERSION", self.version.as_ref());
+        let deployment = resolve_env("OTEL_SERVICE_DEPLOYMENT", self.deployment.as_ref());
+
         let mut builder = Resource::builder();
-        if let Some(name) = self.name() {
+        if let Some(name) = name {
             builder = builder.with_service_name(name);
         }
         let mut attributes = Vec::<KeyValue>::with_capacity(2);
-        if let Some(version) = self.version() {
+        if let Some(version) = version {
             attributes.push(KeyValue::new(SERVICE_VERSION, version));
         }
-        if let Some(deployment) = self.deployment() {
+        if let Some(deployment) = deployment {
             attributes.push(KeyValue::new(DEPLOYMENT_ENVIRONMENT_NAME, deployment));
         }
         if !attributes.is_empty() {
@@ -160,21 +110,16 @@ impl Telemetry {
     }
 
     /// Initializes the tracer provider.
-    ///
-    /// Returns `None` if the OTLP exporter cannot be built (graceful degradation).
-    fn init_tracer_provider(&self, protocol: TelemetryProtocol) -> Option<SdkTracerProvider> {
-        let exporter = opentelemetry_otlp::SpanExporter::builder();
+    fn init_tracer(&self, protocol: OtlpProtocol) -> Option<SdkTracerProvider> {
         let exporter = match protocol {
-            TelemetryProtocol::HTTP => exporter.with_http().build(),
-            TelemetryProtocol::GRPC => exporter.with_tonic().build(),
+            OtlpProtocol::Http => opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .build(),
+            OtlpProtocol::Grpc => opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .build(),
         };
-        let exporter = match exporter {
-            Ok(e) => e,
-            Err(err) => {
-                eprintln!("Failed to build OTLP span exporter: {err}, falling back to console");
-                return None;
-            }
-        };
+        let exporter = exporter.ok()?;
 
         Some(
             SdkTracerProvider::builder()
@@ -189,43 +134,32 @@ impl Telemetry {
     }
 
     /// Initializes the metrics provider.
-    ///
-    /// Returns `None` if the OTLP exporter cannot be built (graceful degradation).
-    fn init_meter_provider(&self, protocol: TelemetryProtocol) -> Option<SdkMeterProvider> {
-        let exporter = opentelemetry_otlp::MetricExporter::builder();
+    fn init_meter(&self, protocol: OtlpProtocol) -> Option<SdkMeterProvider> {
         let exporter = match protocol {
-            TelemetryProtocol::HTTP => exporter
+            OtlpProtocol::Http => opentelemetry_otlp::MetricExporter::builder()
                 .with_http()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
                 .build(),
-            TelemetryProtocol::GRPC => exporter
+            OtlpProtocol::Grpc => opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
                 .build(),
         };
-        let exporter = match exporter {
-            Ok(e) => e,
-            Err(err) => {
-                eprintln!("Failed to build OTLP metric exporter: {err}, falling back to console");
-                return None;
-            }
-        };
+        let exporter = exporter.ok()?;
 
         let reader = PeriodicReader::builder(exporter)
             .with_interval(Duration::from_secs(30))
             .build();
-
         let stdout_reader =
             PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default()).build();
 
-        let meter_provider = MeterProviderBuilder::default()
+        let provider = MeterProviderBuilder::default()
             .with_resource(self.resource())
             .with_reader(reader)
             .with_reader(stdout_reader)
             .build();
-
-        global::set_meter_provider(meter_provider.clone());
-        Some(meter_provider)
+        global::set_meter_provider(provider.clone());
+        Some(provider)
     }
 
     /// Registers tracing and metrics exporters.
@@ -233,88 +167,75 @@ impl Telemetry {
     /// When `OTEL_EXPORTER_OTLP_*` env vars are present, enables OTLP export.
     /// Otherwise falls back to console logging.
     ///
-    /// Returns [`TelemetryProviders`] that flushes exporters on drop.
-    #[allow(clippy::option_if_let_else)]
-    pub fn register(&self) -> TelemetryProviders {
-        let telemetry_protocol = TelemetryProtocol::from_env();
-        if let Some(protocol) = telemetry_protocol {
-            let tracer_provider = self.init_tracer_provider(protocol);
-            let meter_provider = self.init_meter_provider(protocol);
+    /// Returns [`TelemetryGuard`] that flushes exporters on drop.
+    pub fn register(self) -> TelemetryGuard {
+        let protocol = detect_protocol();
+        let (tracer_provider, meter_provider) = protocol
+            .map_or_else(|| (None, None), |p| (self.init_tracer(p), self.init_meter(p)));
 
-            // Graceful degradation: if either provider fails, fall back to console-only
-            if let Some(ref tp) = tracer_provider {
+        // Build subscriber: always include fmt layer, optionally add OTEL layers
+        match (&tracer_provider, &meter_provider) {
+            (Some(tp), Some(mp)) => {
                 let tracer = tp.tracer("tracing-otel-subscriber");
-                if let Some(ref mp) = meter_provider {
-                    tracing_subscriber::registry()
-                        .with(tracing_subscriber::filter::LevelFilter::INFO)
-                        .with(tracing_subscriber::fmt::layer())
-                        .with(MetricsLayer::new(mp.clone()))
-                        .with(OpenTelemetryLayer::new(tracer))
-                        .init();
-                } else {
-                    tracing_subscriber::registry()
-                        .with(tracing_subscriber::filter::LevelFilter::INFO)
-                        .with(tracing_subscriber::fmt::layer())
-                        .with(OpenTelemetryLayer::new(tracer))
-                        .init();
-                }
-                tracing::info!(
-                    "OpenTelemetry tracing exporter is enabled via {:?}",
-                    protocol
-                );
-            } else {
+                tracing_subscriber::registry()
+                    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+                    .with(tracing_subscriber::fmt::layer())
+                    .with(MetricsLayer::new(mp.clone()))
+                    .with(OpenTelemetryLayer::new(tracer))
+                    .init();
+            }
+            (Some(tp), None) => {
+                let tracer = tp.tracer("tracing-otel-subscriber");
+                tracing_subscriber::registry()
+                    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+                    .with(tracing_subscriber::fmt::layer())
+                    .with(OpenTelemetryLayer::new(tracer))
+                    .init();
+            }
+            _ => {
                 tracing_subscriber::registry()
                     .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
                     .with(tracing_subscriber::fmt::layer())
                     .init();
-                tracing::warn!("OpenTelemetry exporters failed to initialize, using console only");
             }
+        }
 
-            TelemetryProviders {
-                tracer_provider,
-                meter_provider,
-            }
+        if protocol.is_some() {
+            tracing::info!("OpenTelemetry exporters registered");
         } else {
-            tracing_subscriber::registry()
-                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-                .with(tracing_subscriber::fmt::layer())
-                .init();
+            tracing::info!("OpenTelemetry is not configured, console logging only");
+        }
 
-            tracing::info!("OpenTelemetry is not enabled");
-
-            TelemetryProviders {
-                tracer_provider: None,
-                meter_provider: None,
-            }
+        TelemetryGuard {
+            tracer_provider,
+            meter_provider,
         }
     }
 }
 
 /// Owns the tracer and meter providers; performs graceful shutdown on drop.
 #[derive(Debug)]
-pub struct TelemetryProviders {
-    /// Tracer provider for `OpenTelemetry` spans.
-    pub tracer_provider: Option<SdkTracerProvider>,
-    /// Metrics provider for `OpenTelemetry` metrics.
-    pub meter_provider: Option<SdkMeterProvider>,
+pub struct TelemetryGuard {
+    tracer_provider: Option<SdkTracerProvider>,
+    meter_provider: Option<SdkMeterProvider>,
 }
 
-impl Drop for TelemetryProviders {
+impl Drop for TelemetryGuard {
     fn drop(&mut self) {
-        if let Some(tracer_provider) = self.tracer_provider.as_ref()
-            && let Err(err) = tracer_provider.shutdown()
+        if let Some(ref tp) = self.tracer_provider
+            && let Err(err) = tp.shutdown()
         {
             tracing::error!(?err, "tracer provider shutdown error");
         }
-        if let Some(meter_provider) = self.meter_provider.as_ref()
-            && let Err(err) = meter_provider.shutdown()
+        if let Some(ref mp) = self.meter_provider
+            && let Err(err) = mp.shutdown()
         {
             tracing::error!(?err, "meter provider shutdown error");
         }
     }
 }
 
-impl TelemetryProviders {
+impl TelemetryGuard {
     /// Creates an HTTP tracing layer for axum applications.
     #[must_use]
     #[allow(clippy::unused_self)]
@@ -322,21 +243,21 @@ impl TelemetryProviders {
         &self,
     ) -> TraceLayer<
         tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>,
-        FacilitatorHttpMakeSpan,
+        HttpMakeSpan,
         tower_http::trace::DefaultOnRequest,
-        FacilitatorHttpOnResponse,
+        HttpOnResponse,
     > {
         TraceLayer::new_for_http()
-            .make_span_with(FacilitatorHttpMakeSpan)
-            .on_response(FacilitatorHttpOnResponse)
+            .make_span_with(HttpMakeSpan)
+            .on_response(HttpOnResponse)
     }
 }
 
 /// Custom span maker for HTTP requests.
 #[derive(Clone, Copy, Debug)]
-pub struct FacilitatorHttpMakeSpan;
+pub struct HttpMakeSpan;
 
-impl<A> MakeSpan<A> for FacilitatorHttpMakeSpan {
+impl<A> MakeSpan<A> for HttpMakeSpan {
     fn make_span(&mut self, request: &Request<A>) -> Span {
         tracing::info_span!(
             "http_request",
@@ -351,12 +272,11 @@ impl<A> MakeSpan<A> for FacilitatorHttpMakeSpan {
 
 /// Custom response handler for HTTP tracing.
 #[derive(Clone, Copy, Debug)]
-pub struct FacilitatorHttpOnResponse;
+pub struct HttpOnResponse;
 
-impl<A> OnResponse<A> for FacilitatorHttpOnResponse {
+impl<A> OnResponse<A> for HttpOnResponse {
     fn on_response(self, response: &Response<A>, latency: Duration, span: &Span) {
         span.record("status", tracing::field::display(response.status()));
-        span.record("latency", tracing::field::display(latency.as_millis()));
         span.record(
             "http.status_code",
             tracing::field::display(response.status().as_u16()),

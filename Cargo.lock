@@ -2222,7 +2222,6 @@ dependencies = [
  "solana-keypair",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "toml",
  "tower-http",
  "tracing",

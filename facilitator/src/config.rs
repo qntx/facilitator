@@ -25,6 +25,7 @@
 //! # [[schemes]] is optional — auto-generated from configured chains.
 //! ```
 
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::path::Path;
 
@@ -32,6 +33,7 @@ use r402::chain::ChainIdPattern;
 use serde::{Deserialize, Serialize};
 
 use crate::chain::ChainsConfig;
+use crate::error::Error;
 use crate::signers;
 
 /// Scheme registration entry from the TOML config.
@@ -63,8 +65,8 @@ pub struct Config {
     schemes: Vec<SchemeEntry>,
 }
 
-fn default_host() -> IpAddr {
-    IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))
+const fn default_host() -> IpAddr {
+    IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
 }
 
 fn default_port() -> u16 {
@@ -108,32 +110,73 @@ impl Config {
 /// # Errors
 ///
 /// Returns an error if the file cannot be resolved, read, or parsed.
-pub fn load_config(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
+pub fn load_config(path: &Path) -> Result<Config, Error> {
     let config_path = path
         .canonicalize()
-        .map_err(|e| format!("Failed to resolve config path '{}': {e}", path.display()))?;
-    let raw_content = std::fs::read_to_string(&config_path).map_err(|e| {
-        format!(
-            "Failed to read config file '{}': {e}",
-            config_path.display()
-        )
-    })?;
+        .map_err(|e| Error::Config(format!("Failed to resolve '{}': {e}", path.display())))?;
+    let raw_content = std::fs::read_to_string(&config_path)
+        .map_err(|e| Error::Config(format!("Failed to read '{}': {e}", config_path.display())))?;
 
-    // Pre-process: extract [signers], inject into chains, auto-generate schemes.
-    let processed = signers::preprocess_config(&raw_content).map_err(|e| {
-        format!(
-            "Failed to pre-process config '{}': {e}",
-            config_path.display()
-        )
-    })?;
+    let mut doc: BTreeMap<String, toml::Value> = toml::from_str(&raw_content)
+        .map_err(|e| Error::Config(format!("Failed to parse '{}': {e}", config_path.display())))?;
 
-    let config: Config = toml::from_str(&processed).map_err(|e| {
-        format!(
-            "Failed to parse TOML config '{}': {e}",
-            config_path.display()
-        )
-    })?;
+    // Step 1: resolve signers and inject into chain entries
+    signers::preprocess_signers(&mut doc)?;
+
+    // Step 2: auto-generate [[schemes]] if absent
+    auto_generate_schemes(&mut doc);
+
+    let processed = toml::to_string(&doc)
+        .map_err(|e| Error::Config(format!("Failed to serialize config: {e}")))?;
+    let config: Config = toml::from_str(&processed)
+        .map_err(|e| Error::Config(format!("Failed to parse config: {e}")))?;
     Ok(config)
+}
+
+/// Auto-generate `[[schemes]]` entries from configured chains when the section
+/// is absent or empty.
+fn auto_generate_schemes(doc: &mut BTreeMap<String, toml::Value>) {
+    let needs_schemes = match doc.get("schemes") {
+        None => true,
+        Some(toml::Value::Array(arr)) => arr.is_empty(),
+        _ => false,
+    };
+    if !needs_schemes {
+        return;
+    }
+
+    let has_evm = has_chain_namespace(doc, "eip155:");
+    let has_solana = has_chain_namespace(doc, "solana:");
+    let mut schemes = Vec::new();
+
+    #[cfg(feature = "chain-eip155")]
+    if has_evm {
+        schemes.push(scheme_entry("eip155-exact", "eip155:*"));
+    }
+
+    #[cfg(feature = "chain-solana")]
+    if has_solana {
+        schemes.push(scheme_entry("solana-exact", "solana:*"));
+    }
+
+    if !schemes.is_empty() {
+        doc.insert("schemes".to_owned(), toml::Value::Array(schemes));
+    }
+}
+
+/// Check if any chain key starts with the given namespace prefix.
+fn has_chain_namespace(doc: &BTreeMap<String, toml::Value>, prefix: &str) -> bool {
+    doc.get("chains")
+        .and_then(|v| v.as_table())
+        .is_some_and(|chains| chains.keys().any(|k| k.starts_with(prefix)))
+}
+
+/// Build a single `[[schemes]]` TOML table entry.
+fn scheme_entry(id: &str, chains: &str) -> toml::Value {
+    let mut entry = toml::map::Map::new();
+    entry.insert("id".to_owned(), toml::Value::String(id.to_owned()));
+    entry.insert("chains".to_owned(), toml::Value::String(chains.to_owned()));
+    toml::Value::Table(entry)
 }
 
 /// Generate a default TOML configuration template.
