@@ -16,10 +16,11 @@ use serde_json::json;
 #[cfg(feature = "telemetry")]
 use tracing::instrument;
 
-use crate::facilitator::FacilitatorLocal;
+/// Type alias for the shared facilitator state used by Axum route handlers.
+pub type FacilitatorState = Arc<dyn Facilitator>;
 
 /// Creates the Axum router with all x402 facilitator endpoints.
-pub fn routes() -> Router<Arc<FacilitatorLocal>> {
+pub fn routes() -> Router<FacilitatorState> {
     Router::new()
         .route("/", get(get_root))
         .route("/verify", post(post_verify))
@@ -45,7 +46,7 @@ async fn get_health() -> impl IntoResponse {
 
 /// `GET /supported` — lists supported payment schemes and networks.
 #[cfg_attr(feature = "telemetry", instrument(skip_all))]
-async fn get_supported(State(facilitator): State<Arc<FacilitatorLocal>>) -> impl IntoResponse {
+async fn get_supported(State(facilitator): State<FacilitatorState>) -> impl IntoResponse {
     match facilitator.supported().await {
         Ok(supported) => (StatusCode::OK, Json(json!(supported))).into_response(),
         Err(error) => {
@@ -63,7 +64,7 @@ async fn get_supported(State(facilitator): State<Arc<FacilitatorLocal>>) -> impl
 /// `POST /verify` — verify a proposed x402 payment.
 #[cfg_attr(feature = "telemetry", instrument(skip_all))]
 async fn post_verify(
-    State(facilitator): State<Arc<FacilitatorLocal>>,
+    State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::VerifyRequest>, JsonRejection>,
 ) -> impl IntoResponse {
     let Json(body) = match body {
@@ -93,7 +94,7 @@ async fn post_verify(
 /// `POST /settle` — settle a verified x402 payment on-chain.
 #[cfg_attr(feature = "telemetry", instrument(skip_all))]
 async fn post_settle(
-    State(facilitator): State<Arc<FacilitatorLocal>>,
+    State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::SettleRequest>, JsonRejection>,
 ) -> impl IntoResponse {
     let Json(body) = match body {

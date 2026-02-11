@@ -13,6 +13,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::http::{Method, StatusCode};
 use dotenvy::dotenv;
 use r402::chain::ChainProvider as ChainProviderTrait;
+use r402::hooks::HookedFacilitator;
 use r402::scheme::SchemeRegistry;
 #[cfg(feature = "chain-eip155")]
 use r402_evm::Eip155Exact;
@@ -25,7 +26,7 @@ use crate::chain::build_chain_registry;
 use crate::config::load_config;
 use crate::error::Error;
 use crate::facilitator::FacilitatorLocal;
-use crate::routes;
+use crate::routes::{self, FacilitatorState};
 #[cfg(feature = "telemetry")]
 use crate::telemetry::Telemetry;
 
@@ -103,9 +104,14 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
     }
 
     let facilitator = FacilitatorLocal::new(scheme_registry);
-    let axum_state = Arc::new(facilitator);
 
-    let http_endpoints = Router::new().merge(routes::routes().with_state(axum_state));
+    // Wrap with HookedFacilitator to enable lifecycle hooks.
+    // Register hooks here via `.with_hook(my_hook)` before building state.
+    let hooked = HookedFacilitator::new(facilitator);
+
+    let axum_state: FacilitatorState = Arc::new(hooked);
+
+    let http_endpoints = Router::new().merge(routes::routes().with_state(Arc::clone(&axum_state)));
     #[cfg(feature = "telemetry")]
     let http_endpoints = http_endpoints.layer(telemetry_layer);
     let http_endpoints = http_endpoints
