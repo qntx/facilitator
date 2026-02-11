@@ -67,15 +67,12 @@ async fn post_verify(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::VerifyRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    let Json(body) = match body {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid request body" })),
-            )
-                .into_response();
-        }
+    let Ok(Json(body)) = body else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid request body" })),
+        )
+            .into_response();
     };
     match facilitator.verify(body).await {
         Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
@@ -97,15 +94,12 @@ async fn post_settle(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::SettleRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    let Json(body) = match body {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid request body" })),
-            )
-                .into_response();
-        }
+    let Ok(Json(body)) = body else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid request body" })),
+        )
+            .into_response();
     };
     match facilitator.settle(body).await {
         Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
