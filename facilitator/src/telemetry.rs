@@ -170,8 +170,10 @@ impl Telemetry {
     /// Returns [`TelemetryGuard`] that flushes exporters on drop.
     pub fn register(self) -> TelemetryGuard {
         let protocol = detect_protocol();
-        let (tracer_provider, meter_provider) = protocol
-            .map_or_else(|| (None, None), |p| (self.init_tracer(p), self.init_meter(p)));
+        let (tracer_provider, meter_provider) = protocol.map_or_else(
+            || (None, None),
+            |p| (self.init_tracer(p), self.init_meter(p)),
+        );
 
         // Build subscriber: always include fmt layer, optionally add OTEL layers
         match (&tracer_provider, &meter_provider) {
