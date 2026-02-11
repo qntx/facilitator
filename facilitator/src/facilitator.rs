@@ -2,19 +2,20 @@
 //!
 //! [`FacilitatorLocal`] routes payment verification and settlement requests
 //! to the appropriate scheme handler via a [`SchemeRegistry`].
+//!
+//! Payment-level errors (unsupported scheme, invalid payload, etc.) are returned
+//! as `Ok(VerifyResponse::Invalid)` / `Ok(SettleResponse::Error)` with HTTP 200,
+//! matching the official CDP facilitator behavior.
+//! Only operational errors (RPC failures, etc.) propagate as `Err(FacilitatorError)`.
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use axum::Json;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use r402::facilitator::{Facilitator, FacilitatorError};
 use r402::proto;
-use r402::proto::{AsPaymentProblem, ErrorReason, PaymentVerificationError};
+use r402::proto::AsPaymentProblem;
 use r402::scheme::SchemeRegistry;
-use serde::{Deserialize, Serialize};
 
 /// Local [`Facilitator`] that delegates to scheme handlers in a [`SchemeRegistry`].
 #[allow(missing_debug_implementations)]
@@ -36,14 +37,19 @@ impl Facilitator for FacilitatorLocal {
     ) -> Pin<Box<dyn Future<Output = Result<proto::VerifyResponse, FacilitatorError>> + Send + '_>>
     {
         Box::pin(async move {
-            let handler = request
+            // Payment-level routing failure → 200 + Invalid (matches CDP behavior)
+            let handler = match request
                 .scheme_slug()
                 .and_then(|slug| self.handlers.by_slug(&slug))
-                .ok_or_else(|| {
-                    FacilitatorError::PaymentVerification(
-                        PaymentVerificationError::UnsupportedScheme,
-                    )
-                })?;
+            {
+                Some(h) => h,
+                None => {
+                    return Ok(proto::VerifyResponse::invalid(
+                        None,
+                        "unsupported_scheme".into(),
+                    ));
+                }
+            };
             handler.verify(request).await
         })
     }
@@ -54,14 +60,21 @@ impl Facilitator for FacilitatorLocal {
     ) -> Pin<Box<dyn Future<Output = Result<proto::SettleResponse, FacilitatorError>> + Send + '_>>
     {
         Box::pin(async move {
-            let handler = request
+            // Payment-level routing failure → 200 + Error (matches CDP behavior)
+            let handler = match request
                 .scheme_slug()
                 .and_then(|slug| self.handlers.by_slug(&slug))
-                .ok_or_else(|| {
-                    FacilitatorError::PaymentVerification(
-                        PaymentVerificationError::UnsupportedScheme,
-                    )
-                })?;
+            {
+                Some(h) => h,
+                None => {
+                    return Ok(proto::SettleResponse::Error {
+                        reason: "unsupported_scheme".into(),
+                        message: Some("No handler registered for this payment scheme".into()),
+                        payer: None,
+                        network: String::new(),
+                    });
+                }
+            };
             handler.settle(request).await
         })
     }
@@ -91,41 +104,38 @@ impl Facilitator for FacilitatorLocal {
     }
 }
 
-/// Errors from local facilitator operations.
+/// Converts a [`FacilitatorError`] into a [`proto::VerifyResponse::Invalid`].
 ///
-/// Wraps [`FacilitatorError`] to provide HTTP response conversion.
-#[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-pub struct FacilitatorLocalError(pub FacilitatorError);
+/// Used by the `/verify` route to return a well-formed error response
+/// using the official x402 verify wire format when an operational error occurs.
+pub fn error_to_verify_response(error: &FacilitatorError) -> proto::VerifyResponse {
+    let problem = error.as_payment_problem();
+    let reason = error_reason_string(problem.reason());
+    proto::VerifyResponse::invalid_with_message(None, reason, problem.details().to_owned())
+}
 
-impl From<FacilitatorError> for FacilitatorLocalError {
-    fn from(err: FacilitatorError) -> Self {
-        Self(err)
+/// Converts a [`FacilitatorError`] into a [`proto::SettleResponse::Error`].
+///
+/// Used by the `/settle` route to return a well-formed error response
+/// using the official x402 settle wire format when an operational error occurs.
+pub fn error_to_settle_response(error: &FacilitatorError) -> proto::SettleResponse {
+    let problem = error.as_payment_problem();
+    let reason = error_reason_string(problem.reason());
+    proto::SettleResponse::Error {
+        reason,
+        message: Some(problem.details().to_owned()),
+        payer: None,
+        network: String::new(),
     }
 }
 
-impl IntoResponse for FacilitatorLocalError {
-    fn into_response(self) -> Response {
-        #[derive(Serialize, Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct VerificationErrorResponse {
-            is_valid: bool,
-            invalid_reason: ErrorReason,
-            invalid_reason_details: String,
-            payer: String,
-        }
-
-        let problem = self.0.as_payment_problem();
-        let status = match &self.0 {
-            FacilitatorError::PaymentVerification(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        let body = VerificationErrorResponse {
-            is_valid: false,
-            invalid_reason: problem.reason(),
-            invalid_reason_details: problem.details().to_owned(),
-            payer: String::new(),
-        };
-        (status, Json(body)).into_response()
-    }
+/// Serializes an [`ErrorReason`] enum variant to its snake_case string representation.
+fn error_reason_string(reason: proto::ErrorReason) -> String {
+    serde_json::to_value(reason)
+        .ok()
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        })
+        .unwrap_or_else(|| "unexpected_error".to_owned())
 }

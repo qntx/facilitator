@@ -15,7 +15,7 @@ use serde_json::json;
 #[cfg(feature = "telemetry")]
 use tracing::instrument;
 
-use crate::facilitator::{FacilitatorLocal, FacilitatorLocalError};
+use crate::facilitator::{FacilitatorLocal, error_to_settle_response, error_to_verify_response};
 
 /// Creates the Axum router with all x402 facilitator endpoints.
 pub fn routes() -> Router<Arc<FacilitatorLocal>> {
@@ -68,7 +68,15 @@ pub async fn get_supported(State(facilitator): State<Arc<FacilitatorLocal>>) -> 
     use r402::facilitator::Facilitator;
     match facilitator.supported().await {
         Ok(supported) => (StatusCode::OK, Json(json!(supported))).into_response(),
-        Err(error) => FacilitatorLocalError(error).into_response(),
+        Err(error) => {
+            #[cfg(feature = "telemetry")]
+            tracing::error!(error = ?error, "Failed to query supported schemes");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -86,14 +94,12 @@ pub async fn post_verify(
 ) -> impl IntoResponse {
     use r402::facilitator::Facilitator;
     match facilitator.verify(body).await {
-        Ok(valid_response) => (StatusCode::OK, Json(valid_response)).into_response(),
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(error) => {
             #[cfg(feature = "telemetry")]
-            tracing::warn!(
-                error = ?error,
-                "Verification failed"
-            );
-            FacilitatorLocalError(error).into_response()
+            tracing::warn!(error = ?error, "Verification failed");
+            let response = error_to_verify_response(&error);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
 }
@@ -106,14 +112,12 @@ pub async fn post_settle(
 ) -> impl IntoResponse {
     use r402::facilitator::Facilitator;
     match facilitator.settle(body).await {
-        Ok(valid_response) => (StatusCode::OK, Json(valid_response)).into_response(),
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(error) => {
             #[cfg(feature = "telemetry")]
-            tracing::warn!(
-                error = ?error,
-                "Settlement failed"
-            );
-            FacilitatorLocalError(error).into_response()
+            tracing::warn!(error = ?error, "Settlement failed");
+            let response = error_to_settle_response(&error);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
 }

@@ -258,7 +258,6 @@ impl<'de> Deserialize<'de> for ChainsConfig {
     }
 }
 
-
 /// Unified blockchain provider wrapping chain-family–specific implementations.
 #[derive(Debug, Clone)]
 pub enum ChainProvider {
