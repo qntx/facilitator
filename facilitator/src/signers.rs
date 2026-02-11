@@ -189,34 +189,30 @@ pub fn preprocess_config(raw: &str) -> Result<String, Box<dyn std::error::Error>
 
         #[cfg(feature = "chain-eip155")]
         if !evm_chain_ids.is_empty() {
-            for scheme_id in &["v1-eip155-exact", "v2-eip155-exact"] {
-                let mut entry = toml::map::Map::new();
-                entry.insert(
-                    "id".to_owned(),
-                    toml::Value::String((*scheme_id).to_owned()),
-                );
-                entry.insert(
-                    "chains".to_owned(),
-                    toml::Value::String("eip155:*".to_owned()),
-                );
-                schemes.push(toml::Value::Table(entry));
-            }
+            let mut entry = toml::map::Map::new();
+            entry.insert(
+                "id".to_owned(),
+                toml::Value::String("eip155-exact".to_owned()),
+            );
+            entry.insert(
+                "chains".to_owned(),
+                toml::Value::String("eip155:*".to_owned()),
+            );
+            schemes.push(toml::Value::Table(entry));
         }
 
         #[cfg(feature = "chain-solana")]
         if !solana_chain_ids.is_empty() {
-            for scheme_id in &["v1-solana-exact", "v2-solana-exact"] {
-                let mut entry = toml::map::Map::new();
-                entry.insert(
-                    "id".to_owned(),
-                    toml::Value::String((*scheme_id).to_owned()),
-                );
-                entry.insert(
-                    "chains".to_owned(),
-                    toml::Value::String("solana:*".to_owned()),
-                );
-                schemes.push(toml::Value::Table(entry));
-            }
+            let mut entry = toml::map::Map::new();
+            entry.insert(
+                "id".to_owned(),
+                toml::Value::String("solana-exact".to_owned()),
+            );
+            entry.insert(
+                "chains".to_owned(),
+                toml::Value::String("solana:*".to_owned()),
+            );
+            schemes.push(toml::Value::Table(entry));
         }
 
         if !schemes.is_empty() {

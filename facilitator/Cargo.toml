@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [features]
 default = ["telemetry", "chain-eip155", "chain-solana"]
-chain-eip155 = ["dep:r402-evm", "dep:kobe-eth"]
-chain-solana = ["dep:r402-svm", "dep:kobe-sol"]
+chain-eip155 = ["dep:r402-evm", "dep:kobe-eth", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
+chain-solana = ["dep:r402-svm", "dep:kobe-sol", "dep:solana-keypair"]
 telemetry = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -30,7 +30,6 @@ telemetry = [
 ]
 
 [dependencies]
-async-trait = { workspace = true }
 axum = { workspace = true }
 dotenvy = { workspace = true }
 r402 = { workspace = true }
@@ -56,6 +55,10 @@ r402-evm = { workspace = true, optional = true }
 r402-svm = { workspace = true, optional = true }
 kobe-eth = { workspace = true, optional = true }
 kobe-sol = { workspace = true, optional = true }
+alloy-network = { workspace = true, optional = true }
+alloy-signer-local = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+solana-keypair = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }

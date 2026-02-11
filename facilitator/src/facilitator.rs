@@ -3,158 +3,129 @@
 //! [`FacilitatorLocal`] routes payment verification and settlement requests
 //! to the appropriate scheme handler via a [`SchemeRegistry`].
 
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use r402::facilitator::Facilitator;
+use r402::facilitator::{Facilitator, FacilitatorError};
 use r402::proto;
 use r402::proto::{AsPaymentProblem, ErrorReason, PaymentVerificationError};
-use r402::scheme::{SchemeRegistry, X402SchemeFacilitatorError};
+use r402::scheme::SchemeRegistry;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Local [`Facilitator`] that delegates to scheme handlers in a [`SchemeRegistry`].
 #[allow(missing_debug_implementations)]
-pub struct FacilitatorLocal<A> {
-    handlers: A,
+pub struct FacilitatorLocal {
+    handlers: SchemeRegistry,
 }
 
-impl<A> FacilitatorLocal<A> {
+impl FacilitatorLocal {
     /// Creates a new [`FacilitatorLocal`] with the given handler registry.
-    pub const fn new(handlers: A) -> Self {
+    pub const fn new(handlers: SchemeRegistry) -> Self {
         Self { handlers }
     }
 }
 
-impl Facilitator for FacilitatorLocal<SchemeRegistry> {
-    type Error = FacilitatorLocalError;
-
-    async fn verify(
+impl Facilitator for FacilitatorLocal {
+    fn verify(
         &self,
-        request: &proto::VerifyRequest,
-    ) -> Result<proto::VerifyResponse, Self::Error> {
-        let handler = request
-            .scheme_handler_slug()
-            .and_then(|slug| self.handlers.by_slug(&slug))
-            .ok_or_else(|| {
-                FacilitatorLocalError::Verification(
-                    PaymentVerificationError::UnsupportedScheme.into(),
-                )
-            })?;
-        let response = handler
-            .verify(request)
-            .await
-            .map_err(FacilitatorLocalError::Verification)?;
-        Ok(response)
+        request: proto::VerifyRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<proto::VerifyResponse, FacilitatorError>> + Send + '_>>
+    {
+        Box::pin(async move {
+            let handler = request
+                .scheme_slug()
+                .and_then(|slug| self.handlers.by_slug(&slug))
+                .ok_or_else(|| {
+                    FacilitatorError::PaymentVerification(
+                        PaymentVerificationError::UnsupportedScheme,
+                    )
+                })?;
+            handler.verify(request).await
+        })
     }
 
-    async fn settle(
+    fn settle(
         &self,
-        request: &proto::SettleRequest,
-    ) -> Result<proto::SettleResponse, Self::Error> {
-        let handler = request
-            .scheme_handler_slug()
-            .and_then(|slug| self.handlers.by_slug(&slug))
-            .ok_or_else(|| {
-                FacilitatorLocalError::Verification(
-                    PaymentVerificationError::UnsupportedScheme.into(),
-                )
-            })?;
-        let response = handler
-            .settle(request)
-            .await
-            .map_err(FacilitatorLocalError::Settlement)?;
-        Ok(response)
+        request: proto::SettleRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<proto::SettleResponse, FacilitatorError>> + Send + '_>>
+    {
+        Box::pin(async move {
+            let handler = request
+                .scheme_slug()
+                .and_then(|slug| self.handlers.by_slug(&slug))
+                .ok_or_else(|| {
+                    FacilitatorError::PaymentVerification(
+                        PaymentVerificationError::UnsupportedScheme,
+                    )
+                })?;
+            handler.settle(request).await
+        })
     }
 
-    async fn supported(&self) -> Result<proto::SupportedResponse, Self::Error> {
-        let mut kinds = vec![];
-        let mut signers = HashMap::new();
-        for provider in self.handlers.values() {
-            let supported = provider.supported().await.ok();
-            if let Some(mut supported) = supported {
-                kinds.append(&mut supported.kinds);
-                for (chain_id, signer_addresses) in supported.signers {
-                    signers.entry(chain_id).or_insert(signer_addresses);
+    fn supported(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<proto::SupportedResponse, FacilitatorError>> + Send + '_>>
+    {
+        Box::pin(async move {
+            let mut kinds = vec![];
+            let mut signers = HashMap::new();
+            for provider in self.handlers.values() {
+                let supported = provider.supported().await.ok();
+                if let Some(mut supported) = supported {
+                    kinds.append(&mut supported.kinds);
+                    for (chain_id, signer_addresses) in supported.signers {
+                        signers.entry(chain_id).or_insert(signer_addresses);
+                    }
                 }
             }
-        }
-        Ok(proto::SupportedResponse {
-            kinds,
-            extensions: Vec::new(),
-            signers,
+            Ok(proto::SupportedResponse {
+                kinds,
+                extensions: Vec::new(),
+                signers,
+            })
         })
     }
 }
 
 /// Errors from local facilitator operations.
+///
+/// Wraps [`FacilitatorError`] to provide HTTP response conversion.
 #[derive(Debug, thiserror::Error)]
-pub enum FacilitatorLocalError {
-    /// Payment verification failed.
-    #[error(transparent)]
-    Verification(X402SchemeFacilitatorError),
-    /// Payment settlement failed.
-    #[error(transparent)]
-    Settlement(X402SchemeFacilitatorError),
+#[error(transparent)]
+pub struct FacilitatorLocalError(pub FacilitatorError);
+
+impl From<FacilitatorError> for FacilitatorLocalError {
+    fn from(err: FacilitatorError) -> Self {
+        Self(err)
+    }
 }
 
 impl IntoResponse for FacilitatorLocalError {
     fn into_response(self) -> Response {
         #[derive(Serialize, Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct VerificationErrorResponse<'a> {
+        struct VerificationErrorResponse {
             is_valid: bool,
             invalid_reason: ErrorReason,
-            invalid_reason_details: &'a str,
-            payer: &'a str,
+            invalid_reason_details: String,
+            payer: String,
         }
 
-        #[derive(Serialize, Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SettlementErrorResponse<'a> {
-            success: bool,
-            network: &'a str,
-            transaction: &'a str,
-            error_reason: ErrorReason,
-            error_reason_details: &'a str,
-            payer: &'a str,
-        }
-
-        match self {
-            Self::Verification(scheme_handler_error) => {
-                let problem = scheme_handler_error.as_payment_problem();
-                let body = VerificationErrorResponse {
-                    is_valid: false,
-                    invalid_reason: problem.reason(),
-                    invalid_reason_details: problem.details(),
-                    payer: "",
-                };
-                let status = match scheme_handler_error {
-                    X402SchemeFacilitatorError::PaymentVerification(_) => StatusCode::BAD_REQUEST,
-                    X402SchemeFacilitatorError::OnchainFailure(_) => {
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    }
-                };
-                (status, Json(body)).into_response()
-            }
-            Self::Settlement(scheme_handler_error) => {
-                let problem = scheme_handler_error.as_payment_problem();
-                let body = SettlementErrorResponse {
-                    success: false,
-                    network: "",
-                    transaction: "",
-                    error_reason: problem.reason(),
-                    error_reason_details: problem.details(),
-                    payer: "",
-                };
-                let status = match scheme_handler_error {
-                    X402SchemeFacilitatorError::PaymentVerification(_) => StatusCode::BAD_REQUEST,
-                    X402SchemeFacilitatorError::OnchainFailure(_) => {
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    }
-                };
-                (status, Json(body)).into_response()
-            }
-        }
+        let problem = self.0.as_payment_problem();
+        let status = match &self.0 {
+            FacilitatorError::PaymentVerification(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        let body = VerificationErrorResponse {
+            is_valid: false,
+            invalid_reason: problem.reason(),
+            invalid_reason_details: problem.details().to_owned(),
+            payer: String::new(),
+        };
+        (status, Json(body)).into_response()
     }
 }

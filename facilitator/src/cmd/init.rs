@@ -1,8 +1,9 @@
 //! `facilitator init` command — generate a default TOML configuration file.
 
-use crate::config::generate_default_config;
 use std::fs;
 use std::path::Path;
+
+use crate::config::generate_default_config;
 
 /// Execute the `init` command.
 ///

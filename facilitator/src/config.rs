@@ -25,12 +25,80 @@
 //! # [[schemes]] is optional — auto-generated from configured chains.
 //! ```
 
-use crate::chain::ChainsConfig;
-use crate::signers;
+use std::net::IpAddr;
 use std::path::Path;
 
-/// Server configuration parameterised with chain-specific config.
-pub type Config = r402::config::Config<ChainsConfig>;
+use r402::chain::ChainIdPattern;
+use serde::{Deserialize, Serialize};
+
+use crate::chain::ChainsConfig;
+use crate::signers;
+
+/// Scheme registration entry from the TOML config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchemeEntry {
+    /// Scheme identifier (e.g. "v2-eip155-exact").
+    pub id: String,
+    /// Chain pattern (e.g. "eip155:*").
+    pub chains: ChainIdPattern,
+    /// Optional scheme-specific configuration.
+    #[serde(flatten)]
+    pub config: Option<serde_json::Value>,
+}
+
+/// Server configuration combining host/port, chain configs, and scheme registrations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    /// Bind address (default: 0.0.0.0).
+    #[serde(default = "default_host")]
+    host: IpAddr,
+    /// Listen port (default: 8080).
+    #[serde(default = "default_port")]
+    port: u16,
+    /// Chain provider configurations keyed by CAIP-2 identifier.
+    #[serde(default)]
+    chains: ChainsConfig,
+    /// Scheme registrations (optional, auto-generated if absent).
+    #[serde(default)]
+    schemes: Vec<SchemeEntry>,
+}
+
+fn default_host() -> IpAddr {
+    IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))
+}
+
+fn default_port() -> u16 {
+    std::env::var("PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8080)
+}
+
+impl Config {
+    /// Returns the configured bind address.
+    #[must_use]
+    pub const fn host(&self) -> IpAddr {
+        self.host
+    }
+
+    /// Returns the configured listen port.
+    #[must_use]
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
+    /// Returns a reference to the chain configurations.
+    #[must_use]
+    pub const fn chains(&self) -> &ChainsConfig {
+        &self.chains
+    }
+
+    /// Returns a reference to the scheme registrations.
+    #[must_use]
+    pub fn schemes(&self) -> &[SchemeEntry] {
+        &self.schemes
+    }
+}
 
 /// Load configuration from a TOML file at the given path.
 ///
@@ -149,12 +217,12 @@ rpc = "https://api.devnet.solana.com"
 # Scheme registrations (optional)
 #
 # If omitted, all configured chains are auto-registered with
-# every available scheme version (v1 + v2).
+# every available scheme.
 #
 # Uncomment below only if you need to restrict schemes:
 #
 # [[schemes]]
-# id = "v2-eip155-exact"
+# id = "eip155-exact"
 # chains = "eip155:84532"
 "#,
     );

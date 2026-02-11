@@ -13,6 +13,9 @@
 //! | `OTEL_SERVICE_VERSION` | Service version |
 //! | `OTEL_SERVICE_DEPLOYMENT` | Deployment environment |
 
+use std::env;
+use std::time::Duration;
+
 use axum::http::{Request, Response};
 use opentelemetry::trace::{Status, TracerProvider};
 use opentelemetry::{KeyValue, Value, global};
@@ -26,8 +29,6 @@ use opentelemetry_semantic_conventions::{
     attribute::{DEPLOYMENT_ENVIRONMENT_NAME, SERVICE_VERSION},
 };
 use serde::{Deserialize, Serialize};
-use std::env;
-use std::time::Duration;
 use tower_http::trace::{MakeSpan, OnResponse, TraceLayer};
 use tracing::Span;
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer, OpenTelemetrySpanExt};

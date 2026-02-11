@@ -557,7 +557,6 @@ version = "1.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c00c0c3a75150a9dc7c8c679ca21853a137888b4e1c5569f92d7e2b15b5102"
 dependencies = [
- "alloy-json-abi",
  "alloy-sol-macro-input",
  "const-hex",
  "heck",
@@ -576,14 +575,12 @@ version = "1.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "297db260eb4d67c105f68d6ba11b8874eec681caec5505eab8fbebee97f790bc"
 dependencies = [
- "alloy-json-abi",
  "const-hex",
  "dunce",
  "heck",
  "macro-string",
  "proc-macro2",
  "quote",
- "serde_json",
  "syn 2.0.114",
  "syn-solidity",
 ]
@@ -2199,9 +2196,10 @@ dependencies = [
 
 [[package]]
 name = "facilitator"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
- "async-trait",
+ "alloy-network",
+ "alloy-signer-local",
  "axum",
  "bs58",
  "clap",
@@ -2221,6 +2219,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "solana-keypair",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
@@ -2229,6 +2228,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -4226,15 +4226,11 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "r402"
-version = "0.3.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d26db624555ca8e63d05d21e9313aff0a8791c431b67354fc90c9c271e4fbcdc"
+checksum = "6366a8bcdd9cf0562196c7df74142bd66617a6e55607baed35eb10ea24191d3d"
 dependencies = [
- "alloy-primitives",
- "async-trait",
  "base64 0.22.1",
- "clap",
- "regex",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -4245,9 +4241,9 @@ dependencies = [
 
 [[package]]
 name = "r402-evm"
-version = "0.3.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "666a8c7011f83065b1e598be5c5664826602a15d819f8bd9f6cb3d29d188623c"
+checksum = "22c02a44d7092886975a0b48304992e55abc4b395ede864f10ea7287802d9a5e"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -4275,11 +4271,10 @@ dependencies = [
 
 [[package]]
 name = "r402-svm"
-version = "0.3.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e16ab021afa75b60b27982e2586372c12300359a61b8012d26bffb2680abe3b"
+checksum = "ce1d83b41c2ec93b9b7f9487c6ee3ebf76f0cf05a755a9145ef93cc9bc97b4ea"
 dependencies = [
- "async-trait",
  "bincode",
  "bs58",
  "futures-util",

@@ -1,108 +1,72 @@
 //! Scheme builder implementations for the x402 facilitator.
 //!
-//! This module provides [`X402SchemeFacilitatorBuilder`] implementations for all supported
-//! payment schemes. These builders create scheme facilitators from the generic
-//! [`ChainProvider`] enum by extracting the appropriate
-//! chain-specific provider.
+//! This module provides [`SchemeBuilder`] implementations for all supported
+//! payment schemes. These builders create facilitator instances from the generic
+//! [`ChainProvider`] enum by extracting the appropriate chain-specific provider.
 //!
 //! # Supported Schemes
 //!
 //! | Scheme | Chains | Description |
 //! |--------|--------|-------------|
-//! | [`V1Eip155Exact`] | EIP-155 (EVM) | V1 protocol with exact amount on EVM |
-//! | [`V2Eip155Exact`] | EIP-155 (EVM) | V2 protocol with exact amount on EVM |
-//! | [`V1SolanaExact`] | Solana | V1 protocol with exact amount on Solana |
-//! | [`V2SolanaExact`] | Solana | V2 protocol with exact amount on Solana |
+//! | [`Eip155Exact`] | EIP-155 (EVM) | Exact amount payments on EVM |
+//! | [`SolanaExact`] | Solana | Exact amount payments on Solana |
 //!
 //! # Example
 //!
 //! ```ignore
-//! use r402::scheme::{SchemeBlueprints, X402SchemeFacilitatorBuilder};
-//! use r402_evm::V2Eip155Exact;
+//! use r402::scheme::SchemeRegistry;
+//! use r402_evm::Eip155Exact;
 //! use crate::chain::ChainProvider;
 //!
-//! // Register schemes
-//! let blueprints = SchemeBlueprints::new()
-//!     .and_register(V2Eip155Exact)
-//!     .and_register(V2SolanaExact);
+//! let mut registry = SchemeRegistry::new();
+//! registry.register(&Eip155Exact, &provider, None)?;
 //! ```
 
 #[allow(unused_imports)] // For when no chain features are enabled
-use crate::chain::ChainProvider;
-#[allow(unused_imports)] // For when no chain features are enabled
-use r402::scheme::{X402SchemeFacilitator, X402SchemeFacilitatorBuilder};
-#[allow(unused_imports)] // For when no chain features are enabled
 use std::sync::Arc;
 
+#[allow(unused_imports)] // For when no chain features are enabled
+use r402::facilitator::Facilitator;
+#[allow(unused_imports)] // For when no chain features are enabled
+use r402::scheme::SchemeBuilder;
 #[cfg(feature = "chain-eip155")]
-use r402_evm::{V1Eip155Exact, V2Eip155Exact};
+use r402_evm::Eip155Exact;
 #[cfg(feature = "chain-solana")]
-use r402_svm::{V1SolanaExact, V2SolanaExact};
+use r402_svm::SolanaExact;
 
-#[cfg(feature = "chain-solana")]
-impl X402SchemeFacilitatorBuilder<&ChainProvider> for V1SolanaExact {
-    fn build(
-        &self,
-        provider: &ChainProvider,
-        config: Option<serde_json::Value>,
-    ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn std::error::Error>> {
-        #[allow(irrefutable_let_patterns)] // For when just chain-aptos is enabled
-        let solana_provider = if let ChainProvider::Solana(provider) = provider {
-            Arc::clone(provider)
-        } else {
-            return Err("V1SolanaExact::build: provider must be a SolanaChainProvider".into());
-        };
-        self.build(solana_provider, config)
-    }
-}
-
-#[cfg(feature = "chain-solana")]
-impl X402SchemeFacilitatorBuilder<&ChainProvider> for V2SolanaExact {
-    fn build(
-        &self,
-        provider: &ChainProvider,
-        config: Option<serde_json::Value>,
-    ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn std::error::Error>> {
-        #[allow(irrefutable_let_patterns)] // For when just chain-aptos is enabled
-        let solana_provider = if let ChainProvider::Solana(provider) = provider {
-            Arc::clone(provider)
-        } else {
-            return Err("V2SolanaExact::build: provider must be a SolanaChainProvider".into());
-        };
-        self.build(solana_provider, config)
-    }
-}
+#[allow(unused_imports)] // For when no chain features are enabled
+use crate::chain::ChainProvider;
 
 #[cfg(feature = "chain-eip155")]
-impl X402SchemeFacilitatorBuilder<&ChainProvider> for V2Eip155Exact {
+impl SchemeBuilder<&ChainProvider> for Eip155Exact {
     fn build(
         &self,
         provider: &ChainProvider,
         config: Option<serde_json::Value>,
-    ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn std::error::Error>> {
-        #[allow(irrefutable_let_patterns)] // For when just chain-aptos is enabled
+    ) -> Result<Box<dyn Facilitator>, Box<dyn std::error::Error>> {
+        #[allow(irrefutable_let_patterns)]
         let eip155_provider = if let ChainProvider::Eip155(provider) = provider {
             Arc::clone(provider)
         } else {
-            return Err("V2Eip155Exact::build: provider must be an Eip155ChainProvider".into());
+            return Err("Eip155Exact::build: provider must be an Eip155ChainProvider".into());
         };
         self.build(eip155_provider, config)
     }
 }
 
-#[cfg(feature = "chain-eip155")]
-impl X402SchemeFacilitatorBuilder<&ChainProvider> for V1Eip155Exact {
+#[cfg(feature = "chain-solana")]
+impl SchemeBuilder<&ChainProvider> for SolanaExact {
     fn build(
         &self,
         provider: &ChainProvider,
         config: Option<serde_json::Value>,
-    ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn std::error::Error>> {
-        #[allow(irrefutable_let_patterns)] // For when just chain-aptos is enabled
-        let eip155_provider = if let ChainProvider::Eip155(provider) = provider {
+    ) -> Result<Box<dyn Facilitator>, Box<dyn std::error::Error>> {
+        #[allow(irrefutable_let_patterns)]
+        let solana_provider = if let ChainProvider::Solana(provider) = provider {
             Arc::clone(provider)
         } else {
-            return Err("V1Eip155Exact::build: provider must be an Eip155ChainProvider".into());
+            return Err("SolanaExact::build: provider must be a SolanaChainProvider".into());
         };
-        self.build(eip155_provider, config)
+        self.build(solana_provider, config)
     }
 }

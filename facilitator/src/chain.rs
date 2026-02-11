@@ -5,24 +5,133 @@
 //! - **Configuration** — [`ChainConfig`] / [`ChainsConfig`] with CAIP-2 keyed
 //!   TOML (de)serialisation.
 //! - **Providers** — [`ChainProvider`] enum wrapping chain-family–specific RPC
-//!   providers, plus [`FromConfig`] factories.
+//!   providers, plus factory functions.
 //! - **Registry** — [`ChainRegistry`] initialisation from [`ChainsConfig`].
 
-use r402::chain::{ChainId, ChainProviderOps, ChainRegistry, FromConfig};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Deref;
+#[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
+use std::sync::Arc;
 
+use r402::chain::{ChainId, ChainProvider as ChainProviderTrait, ChainRegistry};
 #[cfg(feature = "chain-eip155")]
 use r402_evm::chain as eip155;
 #[cfg(feature = "chain-eip155")]
-use r402_evm::chain::config::{Eip155ChainConfig, Eip155ChainConfigInner};
+use r402_evm::chain::Eip155ChainReference;
 #[cfg(feature = "chain-solana")]
 use r402_svm::chain as solana;
 #[cfg(feature = "chain-solana")]
-use r402_svm::chain::config::{SolanaChainConfig, SolanaChainConfigInner};
-#[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
-use std::sync::Arc;
+use r402_svm::chain::SolanaChainReference;
+use serde::{Deserialize, Serialize};
+
+/// Single RPC endpoint entry for EVM chains.
+#[cfg(feature = "chain-eip155")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Eip155RpcEndpoint {
+    /// HTTP(S) RPC URL.
+    pub http: String,
+    /// Optional per-endpoint rate limit (requests/second).
+    #[serde(default)]
+    pub rate_limit: Option<u32>,
+}
+
+/// Inner configuration for an EVM chain (matches TOML structure).
+#[cfg(feature = "chain-eip155")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Eip155ChainConfigInner {
+    /// RPC endpoint(s).
+    pub rpc: Vec<Eip155RpcEndpoint>,
+    /// Signer private keys (hex, 0x-prefixed). Injected by the signers preprocessor.
+    #[serde(default)]
+    pub signers: Vec<String>,
+    /// Whether the chain supports EIP-1559 gas pricing (default: true).
+    #[serde(default = "default_true")]
+    pub eip1559: bool,
+    /// Whether the chain supports flashblocks (default: false).
+    #[serde(default)]
+    pub flashblocks: bool,
+    /// Transaction receipt timeout in seconds (default: 30).
+    #[serde(default = "default_receipt_timeout")]
+    pub receipt_timeout_secs: u64,
+}
+
+#[cfg(feature = "chain-eip155")]
+fn default_true() -> bool {
+    true
+}
+
+#[cfg(feature = "chain-eip155")]
+fn default_receipt_timeout() -> u64 {
+    30
+}
+
+/// Full EVM chain configuration with chain reference.
+#[cfg(feature = "chain-eip155")]
+#[derive(Debug, Clone)]
+pub struct Eip155ChainConfig {
+    /// Numeric EIP-155 chain reference.
+    pub chain_reference: Eip155ChainReference,
+    /// TOML-level configuration.
+    pub inner: Eip155ChainConfigInner,
+}
+
+#[cfg(feature = "chain-eip155")]
+impl Eip155ChainConfig {
+    /// Returns the CAIP-2 chain ID for this configuration.
+    #[must_use]
+    pub fn chain_id(&self) -> ChainId {
+        self.chain_reference.into()
+    }
+}
+
+/// Inner configuration for a Solana chain (matches TOML structure).
+#[cfg(feature = "chain-solana")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SolanaChainConfigInner {
+    /// RPC endpoint URL.
+    pub rpc: String,
+    /// Optional WebSocket pubsub endpoint URL.
+    #[serde(default)]
+    pub pubsub: Option<String>,
+    /// Signer private key (base58, 64-byte keypair). Injected by the signers preprocessor.
+    #[serde(default)]
+    pub signer: Option<String>,
+    /// Maximum compute units per transaction (default: 200_000).
+    #[serde(default = "default_compute_unit_limit")]
+    pub max_compute_unit_limit: u32,
+    /// Maximum price per compute unit in micro-lamports (default: 1_000_000).
+    #[serde(default = "default_compute_unit_price")]
+    pub max_compute_unit_price: u64,
+}
+
+#[cfg(feature = "chain-solana")]
+fn default_compute_unit_limit() -> u32 {
+    200_000
+}
+
+#[cfg(feature = "chain-solana")]
+fn default_compute_unit_price() -> u64 {
+    1_000_000
+}
+
+/// Full Solana chain configuration with chain reference.
+#[cfg(feature = "chain-solana")]
+#[derive(Debug, Clone)]
+pub struct SolanaChainConfig {
+    /// Solana genesis hash chain reference.
+    pub chain_reference: SolanaChainReference,
+    /// TOML-level configuration.
+    pub inner: SolanaChainConfigInner,
+}
+
+#[cfg(feature = "chain-solana")]
+impl SolanaChainConfig {
+    /// Returns the CAIP-2 chain ID for this configuration.
+    #[must_use]
+    pub fn chain_id(&self) -> ChainId {
+        self.chain_reference.into()
+    }
+}
 
 /// Chain-specific configuration variant.
 ///
@@ -85,8 +194,9 @@ impl<'de> Deserialize<'de> for ChainsConfig {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{MapAccess, Visitor};
         use std::fmt;
+
+        use serde::de::{MapAccess, Visitor};
 
         struct ChainsVisitor;
 
@@ -148,6 +258,7 @@ impl<'de> Deserialize<'de> for ChainsConfig {
     }
 }
 
+
 /// Unified blockchain provider wrapping chain-family–specific implementations.
 #[derive(Debug, Clone)]
 pub enum ChainProvider {
@@ -159,30 +270,7 @@ pub enum ChainProvider {
     Solana(Arc<solana::SolanaChainProvider>),
 }
 
-#[async_trait::async_trait]
-impl FromConfig<ChainConfig> for ChainProvider {
-    async fn from_config(chains: &ChainConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        #[allow(unused_variables)]
-        let provider = match chains {
-            #[cfg(feature = "chain-eip155")]
-            ChainConfig::Eip155(config) => {
-                let provider = eip155::Eip155ChainProvider::from_config(config).await?;
-                Self::Eip155(Arc::new(provider))
-            }
-            #[cfg(feature = "chain-solana")]
-            ChainConfig::Solana(config) => {
-                let provider = solana::SolanaChainProvider::from_config(config).await?;
-                Self::Solana(Arc::new(provider))
-            }
-            #[allow(unreachable_patterns)]
-            _ => unreachable!("ChainConfig variant not enabled in this build"),
-        };
-        #[allow(unreachable_code)]
-        Ok(provider)
-    }
-}
-
-impl ChainProviderOps for ChainProvider {
+impl ChainProviderTrait for ChainProvider {
     fn signer_addresses(&self) -> Vec<String> {
         match self {
             #[cfg(feature = "chain-eip155")]
@@ -205,15 +293,119 @@ impl ChainProviderOps for ChainProvider {
         }
     }
 }
+/// Create a [`ChainProvider`] from a single [`ChainConfig`] entry.
+///
+/// # Errors
+///
+/// Returns an error if the provider cannot be constructed (e.g. invalid keys,
+/// RPC connection failure).
+pub async fn build_chain_provider(
+    config: &ChainConfig,
+) -> Result<ChainProvider, Box<dyn std::error::Error>> {
+    #[allow(unused_variables)]
+    let provider = match config {
+        #[cfg(feature = "chain-eip155")]
+        ChainConfig::Eip155(config) => {
+            use alloy_network::EthereumWallet;
+            use alloy_signer_local::PrivateKeySigner;
+            use url::Url;
 
-#[async_trait::async_trait]
-impl FromConfig<ChainsConfig> for ChainRegistry<ChainProvider> {
-    async fn from_config(chains: &ChainsConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut providers = HashMap::new();
-        for chain in chains.iter() {
-            let chain_provider = ChainProvider::from_config(chain).await?;
-            providers.insert(chain_provider.chain_id(), chain_provider);
+            let mut signers: Vec<PrivateKeySigner> = Vec::new();
+            for key_hex in &config.inner.signers {
+                let signer: PrivateKeySigner = key_hex
+                    .parse()
+                    .map_err(|e| format!("Failed to parse EVM signer key: {e}"))?;
+                signers.push(signer);
+            }
+            if signers.is_empty() {
+                return Err(
+                    format!("No signers configured for EVM chain {}", config.chain_id()).into(),
+                );
+            }
+
+            let wallet = if signers.len() == 1 {
+                EthereumWallet::from(signers.into_iter().next().expect("checked non-empty"))
+            } else {
+                let mut w = EthereumWallet::from(signers[0].clone());
+                for s in &signers[1..] {
+                    w.register_signer(s.clone());
+                }
+                w
+            };
+
+            let endpoints: Vec<(Url, Option<u32>)> = config
+                .inner
+                .rpc
+                .iter()
+                .filter_map(|ep| Url::parse(&ep.http).ok().map(|url| (url, ep.rate_limit)))
+                .collect();
+
+            let provider = eip155::Eip155ChainProvider::new(
+                config.chain_reference,
+                wallet,
+                &endpoints,
+                config.inner.eip1559,
+                config.inner.flashblocks,
+                config.inner.receipt_timeout_secs,
+            )?;
+            ChainProvider::Eip155(Arc::new(provider))
         }
-        Ok(Self::new(providers))
+        #[cfg(feature = "chain-solana")]
+        ChainConfig::Solana(config) => {
+            use solana_keypair::Keypair;
+
+            let signer_str = config.inner.signer.as_ref().ok_or_else(|| {
+                format!(
+                    "No signer configured for Solana chain {}",
+                    config.chain_id()
+                )
+            })?;
+            let keypair_bytes = bs58::decode(signer_str)
+                .into_vec()
+                .map_err(|e| format!("Failed to decode Solana signer key: {e}"))?;
+            // solana-keypair v3: construct from 32-byte secret key array
+            let secret_bytes: [u8; 32] = keypair_bytes
+                .get(..32)
+                .and_then(|s| s.try_into().ok())
+                .ok_or_else(|| {
+                    format!(
+                        "Solana signer key must be at least 32 bytes, got {}",
+                        keypair_bytes.len()
+                    )
+                })?;
+            let keypair = Keypair::new_from_array(secret_bytes);
+
+            let provider = solana::SolanaChainProvider::new(
+                keypair,
+                config.inner.rpc.clone(),
+                config.inner.pubsub.clone(),
+                config.chain_reference,
+                config.inner.max_compute_unit_limit,
+                config.inner.max_compute_unit_price,
+            )
+            .await
+            .map_err(|e| format!("Failed to create Solana provider: {e}"))?;
+            ChainProvider::Solana(Arc::new(provider))
+        }
+        #[allow(unreachable_patterns)]
+        _ => unreachable!("ChainConfig variant not enabled in this build"),
+    };
+    #[allow(unreachable_code)]
+    Ok(provider)
+}
+
+/// Build a [`ChainRegistry`] from a [`ChainsConfig`].
+///
+/// # Errors
+///
+/// Returns an error if any chain provider fails to initialise.
+pub async fn build_chain_registry(
+    chains: &ChainsConfig,
+) -> Result<ChainRegistry<ChainProvider>, Box<dyn std::error::Error>> {
+    let mut providers = HashMap::new();
+    for chain in chains.iter() {
+        let chain_provider = build_chain_provider(chain).await?;
+        providers.insert(chain_provider.chain_id(), chain_provider);
     }
+    Ok(ChainRegistry::new(providers))
 }

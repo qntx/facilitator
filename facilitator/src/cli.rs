@@ -19,8 +19,9 @@
 //! facilitator serve --config my-config.toml
 //! ```
 
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
 
 /// x402 Facilitator — payment verification and settlement server.
 #[derive(Debug, Parser)]
