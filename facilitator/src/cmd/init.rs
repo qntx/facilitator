@@ -18,15 +18,15 @@ use crate::error::Error;
 #[allow(clippy::print_stderr)]
 pub fn run(output: &Path, force: bool) -> Result<(), Error> {
     if output.exists() && !force {
-        return Err(Error::Config(format!(
-            "'{}' already exists. Use --force to overwrite.",
+        return Err(Error::config(format!(
+            "'{}' already exists, use --force to overwrite",
             output.display()
         )));
     }
 
     let content = generate_default_config();
     fs::write(output, content)
-        .map_err(|e| Error::Config(format!("Failed to write '{}': {e}", output.display())))?;
+        .map_err(|e| Error::config_with(format!("failed to write '{}'", output.display()), e))?;
 
     eprintln!("Config file written to {}", output.display());
     Ok(())

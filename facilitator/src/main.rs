@@ -31,8 +31,15 @@ async fn main() {
         Commands::Serve { config } => cmd::serve::run(&config).await,
     };
 
-    if let Err(e) = result {
-        eprintln!("Error: {e}");
+    if let Err(ref e) = result {
+        eprint!("Error: {e}");
+        // Walk the source chain so structured causes are not lost.
+        let mut source = std::error::Error::source(e);
+        while let Some(cause) = source {
+            eprint!(": {cause}");
+            source = std::error::Error::source(cause);
+        }
+        eprintln!();
         std::process::exit(1);
     }
 }

@@ -131,12 +131,12 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
     let listener = tokio::net::TcpListener::bind(addr).await;
     #[cfg(feature = "telemetry")]
     let listener = listener.inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e));
-    let listener = listener.map_err(|e| Error::Server(format!("Failed to bind: {e}")))?;
+    let listener = listener.map_err(|e| Error::server_with("failed to bind", e))?;
 
     axum::serve(listener, http_endpoints)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .map_err(|e| Error::Server(format!("Server error: {e}")))?;
+        .map_err(|e| Error::server_with("server error", e))?;
 
     Ok(())
 }

@@ -88,13 +88,13 @@ fn build_eip155_provider(
         .iter()
         .map(|k| {
             k.parse()
-                .map_err(|e| Error::Chain(format!("Failed to parse EVM signer key: {e}")))
+                .map_err(|e| Error::chain(format!("failed to parse EVM signer key: {e}")))
         })
         .collect::<Result<_, _>>()?;
 
     if signers.is_empty() {
-        return Err(Error::Chain(format!(
-            "No signers configured for EVM chain {}",
+        return Err(Error::chain(format!(
+            "no signers configured for EVM chain {}",
             config.chain_id()
         )));
     }
@@ -120,7 +120,7 @@ fn build_eip155_provider(
         config.inner.flashblocks,
         config.inner.receipt_timeout_secs,
     )
-    .map_err(|e| Error::Chain(format!("EVM provider init error: {e}")))?;
+    .map_err(|e| Error::chain(format!("EVM provider init failed: {e}")))?;
 
     Ok(ChainProvider::Eip155(Arc::new(provider)))
 }
@@ -138,22 +138,22 @@ async fn build_solana_provider(
     use solana_keypair::Keypair;
 
     let signer_str = config.inner.signer.as_ref().ok_or_else(|| {
-        Error::Chain(format!(
-            "No signer configured for Solana chain {}",
+        Error::chain(format!(
+            "no signer configured for Solana chain {}",
             config.chain_id()
         ))
     })?;
 
     let keypair_bytes = bs58::decode(signer_str)
         .into_vec()
-        .map_err(|e| Error::Chain(format!("Failed to decode Solana signer key: {e}")))?;
+        .map_err(|e| Error::chain_with("failed to decode Solana signer key", e))?;
 
     // solana-keypair v3: construct from 32-byte secret key array
     let secret_bytes: [u8; 32] = keypair_bytes
         .get(..32)
         .and_then(|s| s.try_into().ok())
         .ok_or_else(|| {
-            Error::Chain(format!(
+            Error::chain(format!(
                 "Solana signer key must be at least 32 bytes, got {}",
                 keypair_bytes.len()
             ))
@@ -169,7 +169,7 @@ async fn build_solana_provider(
         config.inner.max_compute_unit_price,
     )
     .await
-    .map_err(|e| Error::Chain(format!("Failed to create Solana provider: {e}")))?;
+    .map_err(|e| Error::chain(format!("failed to create Solana provider: {e}")))?;
 
     Ok(ChainProvider::Solana(Arc::new(provider)))
 }

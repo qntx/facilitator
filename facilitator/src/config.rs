@@ -112,12 +112,14 @@ impl Config {
 pub fn load_config(path: &Path) -> Result<Config, Error> {
     let config_path = path
         .canonicalize()
-        .map_err(|e| Error::Config(format!("Failed to resolve '{}': {e}", path.display())))?;
-    let raw_content = std::fs::read_to_string(&config_path)
-        .map_err(|e| Error::Config(format!("Failed to read '{}': {e}", config_path.display())))?;
+        .map_err(|e| Error::config_with(format!("failed to resolve '{}'", path.display()), e))?;
+    let raw_content = std::fs::read_to_string(&config_path).map_err(|e| {
+        Error::config_with(format!("failed to read '{}'", config_path.display()), e)
+    })?;
 
-    let mut doc: BTreeMap<String, toml::Value> = toml::from_str(&raw_content)
-        .map_err(|e| Error::Config(format!("Failed to parse '{}': {e}", config_path.display())))?;
+    let mut doc: BTreeMap<String, toml::Value> = toml::from_str(&raw_content).map_err(|e| {
+        Error::config_with(format!("failed to parse '{}'", config_path.display()), e)
+    })?;
 
     // Step 1: resolve signers and inject into chain entries
     signers::preprocess_signers(&mut doc)?;
@@ -125,10 +127,10 @@ pub fn load_config(path: &Path) -> Result<Config, Error> {
     // Step 2: auto-generate [[schemes]] if absent
     auto_generate_schemes(&mut doc);
 
-    let processed = toml::to_string(&doc)
-        .map_err(|e| Error::Config(format!("Failed to serialize config: {e}")))?;
-    let config: Config = toml::from_str(&processed)
-        .map_err(|e| Error::Config(format!("Failed to parse config: {e}")))?;
+    let processed =
+        toml::to_string(&doc).map_err(|e| Error::config_with("failed to serialize config", e))?;
+    let config: Config =
+        toml::from_str(&processed).map_err(|e| Error::config_with("failed to parse config", e))?;
     Ok(config)
 }
 
@@ -259,4 +261,156 @@ rpc = "https://api.devnet.solana.com"
     );
 
     config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn has_chain_namespace_matches_eip155() {
+        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
+        let mut chains = toml::map::Map::new();
+        chains.insert(
+            "eip155:84532".into(),
+            toml::Value::Table(toml::map::Map::new()),
+        );
+        doc.insert("chains".into(), toml::Value::Table(chains));
+
+        assert!(has_chain_namespace(&doc, "eip155:"));
+        assert!(!has_chain_namespace(&doc, "solana:"));
+    }
+
+    #[test]
+    fn has_chain_namespace_no_chains() {
+        let doc: BTreeMap<String, toml::Value> = BTreeMap::new();
+        assert!(!has_chain_namespace(&doc, "eip155:"));
+    }
+
+    #[test]
+    fn scheme_entry_builds_correct_table() {
+        let entry = scheme_entry("eip155-exact", "eip155:*");
+        let table = entry.as_table().unwrap();
+        assert_eq!(table["id"].as_str(), Some("eip155-exact"));
+        assert_eq!(table["chains"].as_str(), Some("eip155:*"));
+    }
+
+    #[test]
+    fn auto_generate_schemes_creates_entries() {
+        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
+        let mut chains = toml::map::Map::new();
+        chains.insert(
+            "eip155:84532".into(),
+            toml::Value::Table(toml::map::Map::new()),
+        );
+        doc.insert("chains".into(), toml::Value::Table(chains));
+
+        auto_generate_schemes(&mut doc);
+
+        #[cfg(feature = "chain-eip155")]
+        {
+            let schemes = doc["schemes"].as_array().unwrap();
+            assert!(!schemes.is_empty());
+            let first = schemes[0].as_table().unwrap();
+            assert_eq!(first["id"].as_str(), Some("eip155-exact"));
+            assert_eq!(first["chains"].as_str(), Some("eip155:*"));
+        }
+    }
+
+    #[test]
+    fn auto_generate_schemes_skips_when_present() {
+        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
+        let mut chains = toml::map::Map::new();
+        chains.insert(
+            "eip155:84532".into(),
+            toml::Value::Table(toml::map::Map::new()),
+        );
+        doc.insert("chains".into(), toml::Value::Table(chains));
+
+        // Pre-populate with a custom scheme
+        let existing = vec![scheme_entry("custom-scheme", "eip155:1")];
+        doc.insert("schemes".into(), toml::Value::Array(existing));
+
+        auto_generate_schemes(&mut doc);
+
+        let schemes = doc["schemes"].as_array().unwrap();
+        assert_eq!(schemes.len(), 1);
+        assert_eq!(
+            schemes[0].as_table().unwrap()["id"].as_str(),
+            Some("custom-scheme")
+        );
+    }
+
+    #[test]
+    fn auto_generate_schemes_fills_empty_array() {
+        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
+        let mut chains = toml::map::Map::new();
+        chains.insert(
+            "eip155:84532".into(),
+            toml::Value::Table(toml::map::Map::new()),
+        );
+        doc.insert("chains".into(), toml::Value::Table(chains));
+        doc.insert("schemes".into(), toml::Value::Array(vec![]));
+
+        auto_generate_schemes(&mut doc);
+
+        #[cfg(feature = "chain-eip155")]
+        {
+            let schemes = doc["schemes"].as_array().unwrap();
+            assert!(!schemes.is_empty());
+        }
+    }
+
+    #[test]
+    fn generate_default_config_is_valid_toml() {
+        let config_str = generate_default_config();
+        let parsed: Result<BTreeMap<String, toml::Value>, _> = toml::from_str(&config_str);
+        assert!(parsed.is_ok(), "Generated config must be valid TOML");
+    }
+
+    #[test]
+    fn generate_default_config_has_required_fields() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        assert!(doc.contains_key("host"));
+        assert!(doc.contains_key("port"));
+        assert!(doc.contains_key("signers"));
+    }
+
+    #[test]
+    fn load_config_minimal_file() {
+        let config_content = "host = \"127.0.0.1\"\nport = 9090\n";
+        let dir = std::env::temp_dir().join("facilitator_test_load");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("minimal.toml");
+        std::fs::write(&path, config_content).unwrap();
+
+        let config = load_config(&path).unwrap();
+        assert_eq!(config.port(), 9090);
+        assert_eq!(config.host(), "127.0.0.1".parse::<IpAddr>().unwrap());
+        assert!(config.schemes().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn load_config_nonexistent_file_errors() {
+        let result = load_config(Path::new("/tmp/does_not_exist_facilitator.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_config_invalid_toml_errors() {
+        let dir = std::env::temp_dir().join("facilitator_test_invalid");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("invalid.toml");
+        std::fs::write(&path, "this is [[[not valid toml").unwrap();
+
+        let result = load_config(&path);
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
 }
