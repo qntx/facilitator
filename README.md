@@ -21,10 +21,7 @@
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402), the modular Rust SDK for x402.
-
-> [!WARNING]
-> This software has **not** been audited. See [Security](#security) before using in production.
+Built on [r402](https://github.com/qntx/r402), the modular Rust SDK for x402. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -156,17 +153,7 @@ cargo install facilitator --no-default-features --features chain-eip155
 
 ## Security
 
-> [!CAUTION]
-> **This software has NOT been audited by any independent security firm.**
-
-This service interacts with blockchain networks and processes real financial transactions. Bugs or vulnerabilities **may result in irreversible loss of funds**.
-
-- **No warranty.** Provided "AS IS" without warranty of any kind, express or implied.
-- **Unaudited.** The codebase has not undergone a formal security audit.
-- **Testnet first.** Always validate on testnets before deploying to mainnet.
-- **Key management.** Users are solely responsible for the secure handling of private keys and signing credentials. Never commit secrets to version control — use environment variable references in your config.
-
-To report a vulnerability, please open a [GitHub Security Advisory](https://github.com/qntx/facilitator/security/advisories/new) — do not file a public issue.
+See [`SECURITY.md`](SECURITY.md) for disclaimers, supported versions, and vulnerability reporting.
 
 ## Acknowledgments
 
