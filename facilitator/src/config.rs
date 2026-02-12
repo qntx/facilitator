@@ -17,7 +17,6 @@
 //! [signers]
 //! evm = ["$EVM_SIGNER_PRIVATE_KEY"]
 //! solana = "$SOLANA_SIGNER_PRIVATE_KEY"
-//! # mnemonic = "$MNEMONIC"  # alternative: derive keys from BIP-39 phrase
 //!
 //! [chains."eip155:84532"]
 //! rpc = [{ http = "https://sepolia.base.org" }]
@@ -183,12 +182,12 @@ fn scheme_entry(id: &str, chains: &str) -> toml::Value {
 ///
 /// The output includes commented sections for every chain family enabled
 /// at compile time.  Uses the new simplified format with global signers
-/// and optional mnemonic support.
+/// and environment variable resolution.
 #[must_use]
 pub fn generate_default_config() -> String {
     let mut config = String::from(
         r#"# x402 Facilitator Configuration
-# https://www.x402.org
+# https://qntx.fun
 
 # Server bind address and port.
 # Can also be set via HOST / PORT environment variables.
@@ -201,10 +200,7 @@ port = 8080
 # Per-chain overrides are still possible (add `signers` / `signer` to
 # the individual chain table).
 #
-# Option A: direct private keys
-# Option B: BIP-39 mnemonic (keys derived via BIP-44 / SLIP-10)
-#
-# If both are provided, direct keys take priority over mnemonic.
+# Use environment variable references ($VAR or ${VAR}) for secrets.
 
 [signers]
 "#,
@@ -219,14 +215,6 @@ port = 8080
     #[cfg(feature = "chain-solana")]
     config.push_str(
         r#"solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
-"#,
-    );
-
-    config.push_str(
-        r#"# mnemonic = "$MNEMONIC"               # BIP-39 phrase (alternative)
-# passphrase = ""                       # optional BIP-39 passphrase
-# evm_derivation_path = "m/44'/60'/0'/0/0"    # default MetaMask path
-# solana_derivation_path = "m/44'/501'/0'/0'"  # default Phantom path
 "#,
     );
 

@@ -4,7 +4,7 @@ default-members = ["facilitator"]
 resolver = "3"
 
 [workspace.package]
-version = "0.4.2"
+version = "0.5.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/facilitator"
@@ -17,10 +17,6 @@ axum = "0.8"
 bs58 = { version = "0.5", features = ["alloc"] }
 clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15"
-hex = "0.4"
-kobe = { version = "0.4", features = ["std"] }
-kobe-eth = { version = "0.4", features = ["std"] }
-kobe-sol = { version = "0.4", features = ["std"] }
 opentelemetry = "0.31"
 opentelemetry-otlp = { version = "0.31", features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = "0.31"
@@ -36,7 +32,7 @@ solana-keypair = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-toml = "0.9"
+toml = "1"
 tower-http = { version = "0.6", features = ["trace", "cors", "timeout"] }
 tracing = "0.1"
 url = "2"

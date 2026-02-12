@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [features]
 default = ["telemetry", "chain-eip155", "chain-solana"]
-chain-eip155 = ["dep:r402-evm", "dep:kobe-eth", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
-chain-solana = ["dep:r402-svm", "dep:kobe-sol", "dep:solana-keypair"]
+chain-eip155 = ["dep:r402-evm", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
+chain-solana = ["dep:r402-svm", "dep:solana-keypair"]
 telemetry = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -39,8 +39,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 clap = { workspace = true }
-kobe = { workspace = true }
-hex = { workspace = true }
 bs58 = { workspace = true }
 tokio = { workspace = true }
 tower-http = { workspace = true }
@@ -52,8 +50,6 @@ opentelemetry-semantic-conventions = { workspace = true, optional = true }
 opentelemetry-stdout = { workspace = true, optional = true }
 r402-evm = { workspace = true, optional = true }
 r402-svm = { workspace = true, optional = true }
-kobe-eth = { workspace = true, optional = true }
-kobe-sol = { workspace = true, optional = true }
 alloy-network = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
