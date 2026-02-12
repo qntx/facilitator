@@ -6,7 +6,6 @@
 //!   chain-specific [`ChainsConfig`](crate::chain::ChainsConfig).
 //! - [`load_config`] — Reads and parses a TOML configuration file, with
 //!   automatic global-signer injection and scheme auto-generation.
-//! - [`generate_default_config`] — Produces a commented TOML template.
 //!
 //! # Configuration File Format
 //!
@@ -180,89 +179,6 @@ fn scheme_entry(id: &str, chains: &str) -> toml::Value {
     toml::Value::Table(entry)
 }
 
-/// Generate a default TOML configuration template.
-///
-/// The output includes commented sections for every chain family enabled
-/// at compile time.  Uses the new simplified format with global signers
-/// and environment variable resolution.
-#[must_use]
-pub fn generate_default_config() -> String {
-    let mut config = String::from(
-        r#"# x402 Facilitator Configuration
-# https://qntx.fun
-
-# Server bind address and port.
-# Can also be set via HOST / PORT environment variables.
-host = "0.0.0.0"
-port = 8080
-
-# Global Signers
-#
-# Shared across all chains of the same type.
-# Per-chain overrides are still possible (add `signers` / `signer` to
-# the individual chain table).
-#
-# Use environment variable references ($VAR or ${VAR}) for secrets.
-
-[signers]
-"#,
-    );
-
-    #[cfg(feature = "chain-eip155")]
-    config.push_str(
-        r#"evm = ["$EVM_SIGNER_PRIVATE_KEY"]       # hex, 0x-prefixed
-"#,
-    );
-
-    #[cfg(feature = "chain-solana")]
-    config.push_str(
-        r#"solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
-"#,
-    );
-
-    #[cfg(feature = "chain-eip155")]
-    config.push_str(
-        r#"
-# EIP-155 (EVM) chains
-#
-# Key format: "eip155:<chain_id>"
-# Only RPC config is needed; signers are injected from [signers] above.
-
-[chains."eip155:84532"]
-rpc = [{ http = "https://sepolia.base.org" }]
-"#,
-    );
-
-    #[cfg(feature = "chain-solana")]
-    config.push_str(
-        r#"
-# Solana chains
-#
-# Key format: "solana:<genesis_hash>"
-
-[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
-rpc = "https://api.devnet.solana.com"
-"#,
-    );
-
-    config.push_str(
-        r#"
-# Scheme registrations (optional)
-#
-# If omitted, all configured chains are auto-registered with
-# every available scheme.
-#
-# Uncomment below only if you need to restrict schemes:
-#
-# [[schemes]]
-# id = "eip155-exact"
-# chains = "eip155:84532"
-"#,
-    );
-
-    config
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,22 +275,6 @@ mod tests {
             let schemes = doc["schemes"].as_array().unwrap();
             assert!(!schemes.is_empty());
         }
-    }
-
-    #[test]
-    fn generate_default_config_is_valid_toml() {
-        let config_str = generate_default_config();
-        let parsed: Result<BTreeMap<String, toml::Value>, _> = toml::from_str(&config_str);
-        assert!(parsed.is_ok(), "Generated config must be valid TOML");
-    }
-
-    #[test]
-    fn generate_default_config_has_required_fields() {
-        let config_str = generate_default_config();
-        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
-        assert!(doc.contains_key("host"));
-        assert!(doc.contains_key("port"));
-        assert!(doc.contains_key("signers"));
     }
 
     #[test]
