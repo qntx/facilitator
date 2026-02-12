@@ -48,15 +48,16 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
     // Load .env variables
     dotenv().ok();
 
+    let config = load_config(config_path)?;
+
     #[cfg(feature = "telemetry")]
     let telemetry_guard = Telemetry::new()
         .with_name(env!("CARGO_PKG_NAME"))
         .with_version(env!("CARGO_PKG_VERSION"))
+        .with_log_level(config.log_level())
         .register();
     #[cfg(feature = "telemetry")]
     let telemetry_layer = telemetry_guard.http_tracing();
-
-    let config = load_config(config_path)?;
 
     let chain_registry = build_chain_registry(config.chains()).await?;
 

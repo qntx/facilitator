@@ -47,6 +47,10 @@ fn generate_default_config() -> String {
 host = "0.0.0.0"
 port = 8080
 
+# Log level filter (RUST_LOG env var takes precedence when set).
+# Examples: "info", "debug", "facilitator=debug,r402=trace"
+log_level = "info"
+
 # Global Signers
 #
 # Shared across all chains of the same type.

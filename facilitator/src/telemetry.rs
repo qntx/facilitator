@@ -63,6 +63,7 @@ pub struct Telemetry {
     name: Option<Value>,
     version: Option<Value>,
     deployment: Option<Value>,
+    log_level: Option<String>,
 }
 
 impl Telemetry {
@@ -83,6 +84,16 @@ impl Telemetry {
     #[must_use]
     pub fn with_version(mut self, version: impl Into<Value>) -> Self {
         self.version = Some(version.into());
+        self
+    }
+
+    /// Sets the log level filter used when `RUST_LOG` is not set.
+    ///
+    /// Accepts any valid [`EnvFilter`] directive string (e.g. `"debug"`,
+    /// `"facilitator=debug,r402=trace"`).
+    #[must_use]
+    pub fn with_log_level(mut self, level: impl Into<String>) -> Self {
+        self.log_level = Some(level.into());
         self
     }
 
@@ -183,8 +194,9 @@ impl Telemetry {
             .as_ref()
             .map(|mp| MetricsLayer::new(mp.clone()));
 
+        let fallback = self.log_level.as_deref().unwrap_or("info");
         tracing_subscriber::registry()
-            .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+            .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| fallback.into()))
             .with(tracing_subscriber::fmt::layer())
             .with(metrics_layer)
             .with(otel_layer)

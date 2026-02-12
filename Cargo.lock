@@ -2167,7 +2167,7 @@ dependencies = [
 
 [[package]]
 name = "facilitator"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "alloy-network",
  "alloy-signer-local",

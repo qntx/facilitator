@@ -55,6 +55,13 @@ pub struct Config {
     /// Listen port (default: 8080).
     #[serde(default = "default_port")]
     port: u16,
+    /// Log level filter (default: "info").
+    ///
+    /// Accepts any valid `tracing` [`EnvFilter`](tracing_subscriber::EnvFilter)
+    /// directive, e.g. `"debug"`, `"facilitator=debug,r402=trace"`.
+    /// The `RUST_LOG` environment variable takes precedence when set.
+    #[serde(default = "default_log_level")]
+    log_level: String,
     /// Chain provider configurations keyed by CAIP-2 identifier.
     #[serde(default)]
     chains: ChainsConfig,
@@ -74,6 +81,10 @@ fn default_port() -> u16 {
         .unwrap_or(8080)
 }
 
+fn default_log_level() -> String {
+    "info".to_owned()
+}
+
 impl Config {
     /// Returns the configured bind address.
     #[must_use]
@@ -85,6 +96,12 @@ impl Config {
     #[must_use]
     pub const fn port(&self) -> u16 {
         self.port
+    }
+
+    /// Returns the configured log level filter string.
+    #[must_use]
+    pub fn log_level(&self) -> &str {
+        &self.log_level
     }
 
     /// Returns a reference to the chain configurations.
