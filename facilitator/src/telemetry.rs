@@ -175,32 +175,20 @@ impl Telemetry {
             |p| (self.init_tracer(p), self.init_meter(p)),
         );
 
-        // Build subscriber: always include fmt layer, optionally add OTEL layers
-        match (&tracer_provider, &meter_provider) {
-            (Some(tp), Some(mp)) => {
-                let tracer = tp.tracer("tracing-otel-subscriber");
-                tracing_subscriber::registry()
-                    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-                    .with(tracing_subscriber::fmt::layer())
-                    .with(MetricsLayer::new(mp.clone()))
-                    .with(OpenTelemetryLayer::new(tracer))
-                    .init();
-            }
-            (Some(tp), None) => {
-                let tracer = tp.tracer("tracing-otel-subscriber");
-                tracing_subscriber::registry()
-                    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-                    .with(tracing_subscriber::fmt::layer())
-                    .with(OpenTelemetryLayer::new(tracer))
-                    .init();
-            }
-            _ => {
-                tracing_subscriber::registry()
-                    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-                    .with(tracing_subscriber::fmt::layer())
-                    .init();
-            }
-        }
+        // Build subscriber: Option<Layer> is a no-op when None
+        let otel_layer = tracer_provider
+            .as_ref()
+            .map(|tp| OpenTelemetryLayer::new(tp.tracer("tracing-otel-subscriber")));
+        let metrics_layer = meter_provider
+            .as_ref()
+            .map(|mp| MetricsLayer::new(mp.clone()));
+
+        tracing_subscriber::registry()
+            .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+            .with(tracing_subscriber::fmt::layer())
+            .with(metrics_layer)
+            .with(otel_layer)
+            .init();
 
         if protocol.is_some() {
             tracing::info!("OpenTelemetry exporters registered");

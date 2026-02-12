@@ -4225,9 +4225,9 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "r402"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6366a8bcdd9cf0562196c7df74142bd66617a6e55607baed35eb10ea24191d3d"
+checksum = "5455ebe95cc08178cd1be638ebb3677f08e8b2f8bdf0dc7181c65ed4928160f9"
 dependencies = [
  "base64 0.22.1",
  "rust_decimal",
@@ -4240,9 +4240,9 @@ dependencies = [
 
 [[package]]
 name = "r402-evm"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22c02a44d7092886975a0b48304992e55abc4b395ede864f10ea7287802d9a5e"
+checksum = "948ad0524c7c54a5a85e0ae76fe12883315609703459ea5aa2d6c643d7f9f958"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -4270,9 +4270,9 @@ dependencies = [
 
 [[package]]
 name = "r402-svm"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce1d83b41c2ec93b9b7f9487c6ee3ebf76f0cf05a755a9145ef93cc9bc97b4ea"
+checksum = "f8d43ab74bc255608fae6cdafd7348ddf9e4e34db5d3ef020ed115ed9e527945"
 dependencies = [
  "bincode",
  "bs58",

@@ -12,7 +12,6 @@ mod chain;
 mod cmd;
 mod config;
 mod error;
-mod facilitator;
 mod routes;
 mod signers;
 #[cfg(feature = "telemetry")]

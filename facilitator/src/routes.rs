@@ -2,6 +2,11 @@
 //!
 //! Protocol endpoints (`/verify`, `/settle`, `/supported`, `/health`).
 //! All payloads use JSON, compatible with official x402 client SDKs.
+//!
+//! Error handling follows the x402 wire protocol:
+//! - **Verification failures** → HTTP 200 + `VerifyResponse::Invalid`
+//! - **Settlement failures** → HTTP 200 + `SettleResponse::Error`
+//! - **Infrastructure errors** (only `/supported`) → HTTP 500
 
 use std::sync::Arc;
 
@@ -62,55 +67,56 @@ async fn get_supported(State(facilitator): State<FacilitatorState>) -> impl Into
 }
 
 /// `POST /verify` — verify a proposed x402 payment.
+///
+/// All errors are converted to `VerifyResponse::Invalid` (HTTP 200) to preserve
+/// structured reason codes on the wire.
 #[cfg_attr(feature = "telemetry", instrument(skip_all))]
 async fn post_verify(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::VerifyRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    let Ok(Json(body)) = body else {
+    let Ok(Json(request)) = body else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid request body" })),
+            Json(json!({ "error": "invalid request body" })),
         )
             .into_response();
     };
-    match facilitator.verify(body).await {
-        Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
-        Err(error) => {
+    let response = match facilitator.verify(request).await {
+        Ok(resp) => resp,
+        Err(ref error) => {
             #[cfg(feature = "telemetry")]
-            tracing::warn!(error = ?error, "Verification failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": error.to_string() })),
-            )
-                .into_response()
+            tracing::warn!(?error, "verification failed");
+            proto::VerifyResponse::from_facilitator_error(error)
         }
-    }
+    };
+    (StatusCode::OK, Json(json!(response))).into_response()
 }
 
 /// `POST /settle` — settle a verified x402 payment on-chain.
+///
+/// All errors are converted to `SettleResponse::Error` (HTTP 200) to preserve
+/// structured reason codes on the wire.
 #[cfg_attr(feature = "telemetry", instrument(skip_all))]
 async fn post_settle(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::SettleRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    let Ok(Json(body)) = body else {
+    let Ok(Json(request)) = body else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid request body" })),
+            Json(json!({ "error": "invalid request body" })),
         )
             .into_response();
     };
-    match facilitator.settle(body).await {
-        Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
-        Err(error) => {
+    let network = request.network().to_owned();
+    let response = match facilitator.settle(request).await {
+        Ok(resp) => resp,
+        Err(ref error) => {
             #[cfg(feature = "telemetry")]
-            tracing::warn!(error = ?error, "Settlement failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": error.to_string() })),
-            )
-                .into_response()
+            tracing::warn!(?error, "settlement failed");
+            proto::SettleResponse::from_facilitator_error(error, network)
         }
-    }
+    };
+    (StatusCode::OK, Json(json!(response))).into_response()
 }

@@ -63,13 +63,15 @@ pub async fn build_chain_provider(config: &ChainConfig) -> Result<ChainProvider,
             use alloy_signer_local::PrivateKeySigner;
             use url::Url;
 
-            let mut signers: Vec<PrivateKeySigner> = Vec::new();
-            for key_hex in &config.inner.signers {
-                let signer: PrivateKeySigner = key_hex
-                    .parse()
-                    .map_err(|e| Error::Chain(format!("Failed to parse EVM signer key: {e}")))?;
-                signers.push(signer);
-            }
+            let signers: Vec<PrivateKeySigner> = config
+                .inner
+                .signers
+                .iter()
+                .map(|k| {
+                    k.parse()
+                        .map_err(|e| Error::Chain(format!("Failed to parse EVM signer key: {e}")))
+                })
+                .collect::<Result<_, _>>()?;
             if signers.is_empty() {
                 return Err(Error::Chain(format!(
                     "No signers configured for EVM chain {}",
@@ -77,15 +79,11 @@ pub async fn build_chain_provider(config: &ChainConfig) -> Result<ChainProvider,
                 )));
             }
 
-            let wallet = if signers.len() == 1 {
-                EthereumWallet::from(signers.into_iter().next().expect("checked non-empty"))
-            } else {
-                let mut w = EthereumWallet::from(signers[0].clone());
-                for s in &signers[1..] {
-                    w.register_signer(s.clone());
-                }
-                w
-            };
+            let mut iter = signers.into_iter();
+            let mut wallet = EthereumWallet::from(iter.next().expect("checked non-empty"));
+            for s in iter {
+                wallet.register_signer(s);
+            }
 
             let endpoints: Vec<(Url, Option<u32>)> = config
                 .inner

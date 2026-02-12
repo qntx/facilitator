@@ -25,7 +25,6 @@ use tower_http::timeout::TimeoutLayer;
 use crate::chain::build_chain_registry;
 use crate::config::load_config;
 use crate::error::Error;
-use crate::facilitator::FacilitatorLocal;
 use crate::routes::{self, FacilitatorState};
 #[cfg(feature = "telemetry")]
 use crate::telemetry::Telemetry;
@@ -103,13 +102,11 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
         }
     }
 
-    let facilitator = FacilitatorLocal::new(scheme_registry);
-
     // Wrap with HookedFacilitator to enable lifecycle hooks.
-    // Register hooks here via `.with_hook(my_hook)` before building state.
-    let hooked = HookedFacilitator::new(facilitator);
+    // SchemeRegistry implements Facilitator directly — no wrapper needed.
+    let facilitator = HookedFacilitator::new(scheme_registry);
 
-    let axum_state: FacilitatorState = Arc::new(hooked);
+    let axum_state: FacilitatorState = Arc::new(facilitator);
 
     let http_endpoints = Router::new().merge(routes::routes().with_state(Arc::clone(&axum_state)));
     #[cfg(feature = "telemetry")]
