@@ -1,0 +1,91 @@
+# ==========================================================================
+# x402 Facilitator — Production Caddyfile
+#
+# Prerequisites:
+#   - Caddy v2.8+ (with built-in rate_limit module or caddy-ratelimit plugin)
+#   - DNS A/AAAA record pointing to this server
+#   - Ports 80 + 443 open (Caddy auto-provisions Let's Encrypt TLS)
+#
+# Usage:
+#   caddy run --config /etc/caddy/Caddyfile
+#   caddy reload --config /etc/caddy/Caddyfile
+#
+# Replace "x402.example.com" with your actual domain.
+# ==========================================================================
+
+facilitator.qntx.fun {
+	# ── TLS ──────────────────────────────────────────────────────────
+	# Caddy auto-provisions Let's Encrypt certificates.
+	# Uncomment below to pin a specific email for ACME account:
+	tls x@qntx.fun
+
+	# ── Logging ──────────────────────────────────────────────────────
+	log {
+		output file /var/log/caddy/x402-access.log {
+			roll_size 100MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+
+	# ── Security Headers ─────────────────────────────────────────────
+	header {
+		# Prevent MIME-type sniffing
+		X-Content-Type-Options "nosniff"
+		# Clickjacking protection
+		X-Frame-Options "DENY"
+		# XSS filter
+		X-XSS-Protection "1; mode=block"
+		# Strict Transport Security (1 year, include subdomains)
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		# Referrer policy
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Content Security Policy (API-only, no HTML)
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		# Hide Caddy server token
+		-Server
+	}
+
+	# ── Rate Limiting ────────────────────────────────────────────────
+	# Global: 100 requests/second per IP (burst up to 50).
+	# Requires caddy-ratelimit plugin:
+	#   xcaddy build --with github.com/mholt/caddy-ratelimit
+	#
+	# If not using the plugin, comment this block out and use
+	# iptables/nftables or a cloud WAF instead.
+	#
+	rate_limit {
+	 	zone api_global {
+	 		key    {remote_host}
+	 		events 100
+	 		window 1s
+	 	}
+	}
+
+	# ── Reverse Proxy ────────────────────────────────────────────────
+	# Docker Compose: use container name "facilitator"
+	# Standalone:     change to "localhost:8080"
+
+	handle /health {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /verify {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /settle {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /supported {
+		reverse_proxy facilitator:8080
+	}
+
+	# ── Block everything else ────────────────────────────────────────
+	handle {
+		respond "Not Found" 404
+	}
+}

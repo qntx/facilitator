@@ -1,0 +1,215 @@
+# x402 Facilitator Configuration
+# https://qntx.fun
+#
+# SETUP:
+#   cp config.example.toml config.toml
+#   chmod 600 config.toml
+#   nano config.toml   # Fill in your signer private keys
+#
+# Key concepts:
+#   - [signers]  — configure private keys ONCE, shared across all chains
+#   - [chains.*] — only RPC endpoints needed per chain
+#   - [[schemes]] — OPTIONAL, auto-generated from configured chains if omitted
+
+host = "0.0.0.0"
+port = 8080
+# Log level filter (RUST_LOG env var takes precedence when set).
+# Examples: "info", "debug", "facilitator=debug,r402=trace"
+log_level = "info"
+
+# Global Signers
+#
+# Shared across all chains of the same type.
+# Per-chain overrides: add `signers = [...]` (EVM) or `signer = "..."` (Solana)
+# directly in the chain table.
+
+[signers]
+evm = ["0xYOUR_EVM_PRIVATE_KEY_HERE"]          # hex, 0x-prefixed
+solana = "YOUR_SOLANA_KEYPAIR_BASE58_HERE"      # base58, 64-byte keypair
+
+# EIP-155 (EVM) Chains — Mainnet
+#
+# Key format: "eip155:<chain_id>"
+# Only RPC config needed — signers injected from [signers] above.
+
+# Ethereum (chain 1)
+[chains."eip155:1"]
+rpc = [{ http = "https://ethereum-rpc.publicnode.com" }]
+
+# Base (chain 8453)
+[chains."eip155:8453"]
+rpc = [{ http = "https://mainnet.base.org" }]
+
+# Optimism (chain 10)
+[chains."eip155:10"]
+rpc = [{ http = "https://mainnet.optimism.io" }]
+
+# Arbitrum One (chain 42161)
+[chains."eip155:42161"]
+rpc = [{ http = "https://arb1.arbitrum.io/rpc" }]
+
+# Polygon PoS (chain 137)
+[chains."eip155:137"]
+rpc = [{ http = "https://polygon-rpc.com" }]
+
+# Avalanche C-Chain (chain 43114)
+[chains."eip155:43114"]
+rpc = [{ http = "https://api.avax.network/ext/bc/C/rpc" }]
+
+# Celo (chain 42220)
+[chains."eip155:42220"]
+rpc = [{ http = "https://forno.celo.org" }]
+
+# Sei (chain 1329)
+[chains."eip155:1329"]
+rpc = [{ http = "https://evm-rpc.sei-apis.com" }]
+
+# Sonic (chain 146)
+[chains."eip155:146"]
+rpc = [{ http = "https://rpc.soniclabs.com" }]
+
+# Unichain (chain 130)
+[chains."eip155:130"]
+rpc = [{ http = "https://mainnet.unichain.org" }]
+
+# World Chain (chain 480)
+[chains."eip155:480"]
+rpc = [{ http = "https://worldchain-mainnet.g.alchemy.com/public" }]
+
+# ZKsync Era (chain 324)
+[chains."eip155:324"]
+rpc = [{ http = "https://mainnet.era.zksync.io" }]
+
+# Linea (chain 59144)
+[chains."eip155:59144"]
+rpc = [{ http = "https://rpc.linea.build" }]
+
+# Ink (chain 57073)
+[chains."eip155:57073"]
+rpc = [{ http = "https://rpc-gel.inkonchain.com" }]
+
+# HyperEVM (chain 999)
+[chains."eip155:999"]
+rpc = [{ http = "https://api.hyperliquid.xyz/evm" }]
+
+# Monad (chain 143)
+[chains."eip155:143"]
+rpc = [{ http = "https://rpc.monad.xyz" }]
+
+# Plume (chain 98866)
+[chains."eip155:98866"]
+rpc = [{ http = "https://rpc.plume.org" }]
+
+# Codex (chain 81224)
+[chains."eip155:81224"]
+rpc = [{ http = "https://rpc.codex.xyz" }]
+
+# XDC Network (chain 50)
+[chains."eip155:50"]
+rpc = [{ http = "https://rpc.xinfin.network" }]
+
+# XRPL EVM Sidechain (chain 1440000)
+[chains."eip155:1440000"]
+rpc = [{ http = "https://rpc-evm-sidechain.xrpl.org" }]
+
+# Peaq (chain 3338)
+[chains."eip155:3338"]
+rpc = [{ http = "https://peaq.api.onfinality.io/public" }]
+
+# IoTeX (chain 4689)
+[chains."eip155:4689"]
+rpc = [{ http = "https://babel-api.mainnet.iotex.io" }]
+
+# MegaETH (chain 4326)
+[chains."eip155:4326"]
+rpc = [{ http = "https://rpc.megaeth.com" }]
+
+# EIP-155 (EVM) Chains — Testnet
+
+# Ethereum Sepolia (chain 11155111)
+[chains."eip155:11155111"]
+rpc = [{ http = "https://ethereum-sepolia-rpc.publicnode.com" }]
+
+# Base Sepolia (chain 84532)
+[chains."eip155:84532"]
+rpc = [{ http = "https://sepolia.base.org" }]
+
+# Optimism Sepolia (chain 11155420)
+[chains."eip155:11155420"]
+rpc = [{ http = "https://sepolia.optimism.io" }]
+
+# Arbitrum Sepolia (chain 421614)
+[chains."eip155:421614"]
+rpc = [{ http = "https://sepolia-rollup.arbitrum.io/rpc" }]
+
+# Polygon Amoy (chain 80002)
+[chains."eip155:80002"]
+rpc = [{ http = "https://rpc-amoy.polygon.technology" }]
+
+# Avalanche Fuji (chain 43113)
+[chains."eip155:43113"]
+rpc = [{ http = "https://api.avax-test.network/ext/bc/C/rpc" }]
+
+# Celo Sepolia (chain 11142220)
+[chains."eip155:11142220"]
+rpc = [{ http = "https://alfajores-forno.celo-testnet.org" }]
+
+# Sei Testnet (chain 1328)
+[chains."eip155:1328"]
+rpc = [{ http = "https://evm-rpc-testnet.sei-apis.com" }]
+
+# Sonic Blaze Testnet (chain 57054)
+[chains."eip155:57054"]
+rpc = [{ http = "https://rpc.blaze.soniclabs.com" }]
+
+# Unichain Sepolia (chain 1301)
+[chains."eip155:1301"]
+rpc = [{ http = "https://sepolia.unichain.org" }]
+
+# World Chain Sepolia (chain 4801)
+[chains."eip155:4801"]
+rpc = [{ http = "https://worldchain-sepolia.g.alchemy.com/public" }]
+
+# ZKsync Sepolia (chain 300)
+[chains."eip155:300"]
+rpc = [{ http = "https://sepolia.era.zksync.dev" }]
+
+# Linea Sepolia (chain 59141)
+[chains."eip155:59141"]
+rpc = [{ http = "https://rpc.sepolia.linea.build" }]
+
+# Ink Sepolia (chain 763373)
+[chains."eip155:763373"]
+rpc = [{ http = "https://rpc-gel-sepolia.inkonchain.com" }]
+
+# HyperEVM Testnet (chain 998)
+[chains."eip155:998"]
+rpc = [{ http = "https://api.hyperliquid-testnet.xyz/evm" }]
+
+# Monad Testnet (chain 10143)
+[chains."eip155:10143"]
+rpc = [{ http = "https://testnet-rpc.monad.xyz" }]
+
+# Plume Testnet (chain 98867)
+[chains."eip155:98867"]
+rpc = [{ http = "https://testnet-rpc.plume.org" }]
+
+# Codex Testnet (chain 812242)
+[chains."eip155:812242"]
+rpc = [{ http = "https://rpc.codex-stg.xyz" }]
+
+# XDC Apothem Testnet (chain 51)
+[chains."eip155:51"]
+rpc = [{ http = "https://rpc.apothem.network" }]
+
+# Solana Chains
+#
+# Key format: "solana:<truncated_genesis_hash>"
+
+# Solana Mainnet
+[chains."solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+rpc = "https://api.mainnet-beta.solana.com"
+
+# Solana Devnet
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"

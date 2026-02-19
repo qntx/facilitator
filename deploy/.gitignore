@@ -1,0 +1,21 @@
+# Secrets — NEVER commit
+.env
+config.toml
+
+# Runtime state (fctl)
+.setup-state
+.config-checksums
+.backups/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+/3rdparty

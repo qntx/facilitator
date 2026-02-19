@@ -1,0 +1,568 @@
+#!/usr/bin/env bash
+# ==========================================================================
+# fctl — Unified management CLI for x402 Facilitator
+#
+# Usage:
+#   fctl <command> [options]
+#   fctl help
+#
+# Install:
+#   ln -sf /opt/facilitator/fctl /usr/local/bin/fctl
+# ==========================================================================
+
+set -euo pipefail
+
+# ── Constants ────────────────────────────────────────────────────────────
+DEPLOY_DIR="${FACILITATOR_DIR:-/opt/facilitator}"
+BACKUP_DIR="${DEPLOY_DIR}/.backups"
+CHECKSUM_FILE="${DEPLOY_DIR}/.config-checksums"
+MAX_BACKUPS=10
+HEALTH_URL="http://localhost:8080/health"
+SUPPORTED_URL="http://localhost:8080/supported"
+
+# ── Colors & helpers ─────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+
+info()  { echo -e "${CYAN}[INFO]${NC}  $*"; }
+ok()    { echo -e "${GREEN}[ OK ]${NC}  $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+err()   { echo -e "${RED}[ERR ]${NC}  $*"; }
+die()   { err "$@"; exit 1; }
+bold()  { echo -e "${BOLD}$*${NC}"; }
+dim()   { echo -e "${DIM}$*${NC}"; }
+
+need_root() { [[ $EUID -eq 0 ]] || die "This command requires root. Run: sudo fctl $CMD"; }
+
+# Resolve working directory: prefer DEPLOY_DIR if it has docker-compose.yml,
+# otherwise fall back to current directory.
+resolve_dir() {
+    if [[ -f "${DEPLOY_DIR}/docker-compose.yml" ]]; then
+        cd "${DEPLOY_DIR}"
+    elif [[ -f "./docker-compose.yml" ]]; then
+        DEPLOY_DIR="$(pwd)"
+        cd "${DEPLOY_DIR}"
+    else
+        die "Cannot find docker-compose.yml in ${DEPLOY_DIR} or current directory."
+    fi
+}
+
+DC="docker compose"
+
+# ── Config checksum tracking ─────────────────────────────────────────────
+CONFIG_FILES=(config.toml Caddyfile docker-compose.yml)
+
+save_checksums() {
+    local out=""
+    for f in "${CONFIG_FILES[@]}"; do
+        [[ -f "${DEPLOY_DIR}/${f}" ]] && out+="$(md5sum "${DEPLOY_DIR}/${f}")\n"
+    done
+    echo -e "$out" > "${CHECKSUM_FILE}"
+}
+
+# Detect which config files changed since last save.
+# Prints changed filenames, one per line.
+detect_changes() {
+    [[ -f "${CHECKSUM_FILE}" ]] || { echo "ALL"; return; }
+    local changed=""
+    for f in "${CONFIG_FILES[@]}"; do
+        [[ -f "${DEPLOY_DIR}/${f}" ]] || continue
+        local old new
+        old=$(grep "${f}" "${CHECKSUM_FILE}" 2>/dev/null | awk '{print $1}') || true
+        new=$(md5sum "${DEPLOY_DIR}/${f}" | awk '{print $1}')
+        [[ "${old}" != "${new}" ]] && changed+="${f}\n"
+    done
+    [[ -n "${changed}" ]] && echo -e "${changed}" || true
+}
+
+# ── Health check with retry ──────────────────────────────────────────────
+wait_healthy() {
+    local url="${1:-$HEALTH_URL}" retries="${2:-12}" interval="${3:-5}"
+    info "Waiting for health check..."
+    for i in $(seq 1 "${retries}"); do
+        if curl -sf "${url}" >/dev/null 2>&1; then
+            ok "Facilitator is healthy!"; return 0
+        fi
+        [[ $i -lt ${retries} ]] && sleep "${interval}"
+    done
+    warn "Health check timed out after $((retries * interval))s"
+    warn "Run: fctl logs"
+    return 1
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# Commands
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── status ───────────────────────────────────────────────────────────────
+cmd_status() {
+    resolve_dir
+    echo ""
+    bold "  x402 Facilitator — Status Dashboard"
+    echo ""
+
+    # Service table
+    ${DC} ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || ${DC} ps
+
+    echo ""
+
+    # Health probe
+    if curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
+        ok "Facilitator health: ${GREEN}healthy${NC}"
+    else
+        err "Facilitator health: ${RED}unreachable${NC}"
+    fi
+
+    # Image versions
+    echo ""
+    bold "  Image Versions:"
+    for svc in facilitator caddy watchtower; do
+        local img
+        img=$(docker inspect --format '{{.Config.Image}}' "x402-${svc}" 2>/dev/null) || img="not running"
+        printf "  %-14s %s\n" "${svc}:" "${img}"
+    done
+
+    # Config info
+    echo ""
+    bold "  Config:"
+    if [[ -f "${DEPLOY_DIR}/config.toml" ]]; then
+        local mod
+        mod=$(stat -c '%y' "${DEPLOY_DIR}/config.toml" 2>/dev/null | cut -d'.' -f1) || mod="unknown"
+        echo "  config.toml    last modified: ${mod}"
+    fi
+
+    # Disk usage
+    echo ""
+    bold "  Docker Disk Usage:"
+    docker system df 2>/dev/null | head -5
+    echo ""
+}
+
+# ── deploy ───────────────────────────────────────────────────────────────
+cmd_deploy() {
+    resolve_dir
+    info "Pulling latest images..."
+    ${DC} pull
+
+    info "Recreating containers..."
+    ${DC} up -d --force-recreate --remove-orphans
+
+    save_checksums
+    echo ""
+    wait_healthy
+    echo ""
+    ok "Deployment complete."
+}
+
+# ── reload ───────────────────────────────────────────────────────────────
+cmd_reload() {
+    resolve_dir
+    local changes
+    changes=$(detect_changes)
+
+    if [[ -z "${changes}" ]]; then
+        ok "No config changes detected. Nothing to reload."
+        return 0
+    fi
+
+    if [[ "${changes}" == "ALL" ]]; then
+        warn "No previous checksums found. Restarting all services."
+        ${DC} restart
+        save_checksums
+        wait_healthy
+        return
+    fi
+
+    info "Changed files:"
+    echo -e "${changes}" | while IFS= read -r f; do
+        [[ -n "$f" ]] && echo "  - ${f}"
+    done
+    echo ""
+
+    # Smart restart: only restart affected services
+    if echo -e "${changes}" | grep -q "docker-compose.yml"; then
+        info "docker-compose.yml changed → recreating services..."
+        ${DC} up -d --remove-orphans
+    else
+        if echo -e "${changes}" | grep -q "config.toml"; then
+            info "config.toml changed → restarting facilitator..."
+            ${DC} restart facilitator
+        fi
+        if echo -e "${changes}" | grep -q "Caddyfile"; then
+            info "Caddyfile changed → reloading Caddy..."
+            ${DC} exec caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null \
+                || ${DC} restart caddy
+        fi
+    fi
+
+    save_checksums
+    sleep 2
+    wait_healthy
+}
+
+# ── update ───────────────────────────────────────────────────────────────
+cmd_update() {
+    resolve_dir
+    info "Pulling latest facilitator image..."
+    ${DC} pull facilitator
+
+    info "Rolling restart with latest image..."
+    ${DC} up -d --no-deps --force-recreate facilitator
+
+    wait_healthy
+    echo ""
+
+    info "Cleaning up old images..."
+    docker image prune -f
+    ok "Update complete."
+}
+
+# ── logs ─────────────────────────────────────────────────────────────────
+cmd_logs() {
+    resolve_dir
+    local svc="${1:-facilitator}" tail="${2:-100}"
+    if [[ "${svc}" == "all" ]]; then
+        ${DC} logs -f --tail="${tail}"
+    else
+        ${DC} logs -f --tail="${tail}" "${svc}"
+    fi
+}
+
+# ── doctor ───────────────────────────────────────────────────────────────
+cmd_doctor() {
+    resolve_dir
+    echo ""
+    bold "  x402 Facilitator — Diagnostics"
+    echo ""
+
+    local issues=0
+
+    # Docker
+    if command -v docker &>/dev/null; then
+        ok "Docker: $(docker --version | head -1)"
+    else
+        err "Docker: not installed"; issues=$((issues + 1))
+    fi
+
+    # Docker Compose
+    if docker compose version &>/dev/null; then
+        ok "Docker Compose: $(docker compose version --short)"
+    else
+        err "Docker Compose: not found"; issues=$((issues + 1))
+    fi
+
+    # Disk space
+    local avail
+    avail=$(df -BG "${DEPLOY_DIR}" 2>/dev/null | awk 'NR==2{print $4}' | tr -d 'G')
+    if [[ -n "${avail}" ]] && [[ "${avail}" -gt 5 ]]; then
+        ok "Disk space: ${avail}GB available"
+    else
+        warn "Disk space: ${avail:-unknown}GB available (recommend > 5GB)"; issues=$((issues + 1))
+    fi
+
+    # Config files
+    echo ""
+    bold "  Config Files:"
+    for f in "${CONFIG_FILES[@]}"; do
+        if [[ -f "${DEPLOY_DIR}/${f}" ]]; then
+            ok "${f} exists"
+        else
+            err "${f} MISSING"; issues=$((issues + 1))
+        fi
+    done
+
+    # Container status
+    echo ""
+    bold "  Container Status:"
+    for svc in facilitator caddy watchtower; do
+        local state
+        state=$(docker inspect --format '{{.State.Status}}' "x402-${svc}" 2>/dev/null) || state="not found"
+        if [[ "${state}" == "running" ]]; then
+            ok "${svc}: running"
+        else
+            err "${svc}: ${state}"; issues=$((issues + 1))
+        fi
+    done
+
+    # Port checks
+    echo ""
+    bold "  Port Checks:"
+    for port in 80 443 8080; do
+        if ss -tlnp 2>/dev/null | grep -q ":${port} " || netstat -tlnp 2>/dev/null | grep -q ":${port} "; then
+            ok "Port ${port}: listening"
+        else
+            warn "Port ${port}: not listening"; issues=$((issues + 1))
+        fi
+    done
+
+    # Health endpoint
+    echo ""
+    bold "  Health Checks:"
+    if curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
+        ok "Facilitator /health: healthy"
+    else
+        err "Facilitator /health: unreachable"; issues=$((issues + 1))
+    fi
+
+    # TLS check (if domain configured)
+    local domain
+    domain=$(grep -oP '^\S+' "${DEPLOY_DIR}/Caddyfile" 2>/dev/null | head -1)
+    if [[ -n "${domain}" ]] && [[ "${domain}" != "{" ]]; then
+        echo ""
+        bold "  TLS Check (${domain}):"
+        if curl -sf "https://${domain}/health" >/dev/null 2>&1; then
+            ok "HTTPS: working"
+        else
+            warn "HTTPS: unreachable (DNS or TLS issue?)"
+            issues=$((issues + 1))
+        fi
+    fi
+
+    # Summary
+    echo ""
+    if [[ ${issues} -eq 0 ]]; then
+        echo -e "  ${GREEN}${BOLD}All checks passed.${NC}"
+    else
+        echo -e "  ${YELLOW}${BOLD}${issues} issue(s) found.${NC}"
+    fi
+    echo ""
+}
+
+# ── backup ───────────────────────────────────────────────────────────────
+cmd_backup() {
+    resolve_dir
+    local ts
+    ts=$(date +%Y%m%d-%H%M%S)
+    local target="${BACKUP_DIR}/${ts}"
+    mkdir -p "${target}"
+
+    for f in "${CONFIG_FILES[@]}"; do
+        [[ -f "${DEPLOY_DIR}/${f}" ]] && cp "${DEPLOY_DIR}/${f}" "${target}/"
+    done
+
+    ok "Backup saved to ${target}"
+
+    # Prune old backups (keep MAX_BACKUPS)
+    local count
+    count=$(ls -1d "${BACKUP_DIR}"/2* 2>/dev/null | wc -l)
+    if [[ ${count} -gt ${MAX_BACKUPS} ]]; then
+        ls -1d "${BACKUP_DIR}"/2* | head -n $((count - MAX_BACKUPS)) | while read -r d; do
+            rm -rf "${d}"
+            dim "  Pruned old backup: $(basename "${d}")"
+        done
+    fi
+
+    # List backups
+    echo ""
+    bold "  Available backups:"
+    ls -1d "${BACKUP_DIR}"/2* 2>/dev/null | while read -r d; do
+        echo "    $(basename "${d}")"
+    done
+    echo ""
+}
+
+# ── restore ──────────────────────────────────────────────────────────────
+cmd_restore() {
+    resolve_dir
+    local ts="${1:-}"
+
+    if [[ -z "${ts}" ]]; then
+        info "Available backups:"
+        ls -1d "${BACKUP_DIR}"/2* 2>/dev/null | while read -r d; do
+            echo "  $(basename "${d}")"
+        done
+        echo ""
+        die "Usage: fctl restore <timestamp>  (e.g. fctl restore 20260213-160000)"
+    fi
+
+    local source="${BACKUP_DIR}/${ts}"
+    [[ -d "${source}" ]] || die "Backup not found: ${source}"
+
+    # Auto-backup current state before restoring
+    info "Backing up current config before restore..."
+    cmd_backup
+
+    info "Restoring from ${ts}..."
+    for f in "${CONFIG_FILES[@]}"; do
+        if [[ -f "${source}/${f}" ]]; then
+            cp "${source}/${f}" "${DEPLOY_DIR}/${f}"
+            ok "Restored ${f}"
+        fi
+    done
+    save_checksums
+    warn "Config restored. Run 'fctl deploy' to apply changes."
+}
+
+# ── edit ─────────────────────────────────────────────────────────────────
+cmd_edit() {
+    resolve_dir
+    local file="${1:-}"
+    local editor="${EDITOR:-nano}"
+
+    case "${file}" in
+        config|config.toml)         file="config.toml" ;;
+        caddy|caddyfile|Caddyfile)  file="Caddyfile" ;;
+        compose|docker-compose)     file="docker-compose.yml" ;;
+        "")
+            echo "Usage: fctl edit <file>"
+            echo ""
+            echo "  config     Edit config.toml (signer keys, chains, RPC)"
+            echo "  caddy      Edit Caddyfile (domain, TLS, rate limiting)"
+            echo "  compose    Edit docker-compose.yml"
+            return 1
+            ;;
+    esac
+
+    [[ -f "${DEPLOY_DIR}/${file}" ]] || die "File not found: ${DEPLOY_DIR}/${file}"
+
+    info "Backing up before edit..."
+    cmd_backup
+
+    ${editor} "${DEPLOY_DIR}/${file}"
+
+    echo ""
+    if [[ -n "$(detect_changes)" ]]; then
+        info "Changes detected. Reloading..."
+        cmd_reload
+    else
+        ok "No changes made."
+    fi
+}
+
+# ── reset ────────────────────────────────────────────────────────────────
+cmd_reset() {
+    resolve_dir
+    echo ""
+    warn "This will DESTROY all containers, volumes, and cached data."
+    warn "Config files will NOT be deleted."
+    echo ""
+    read -rp "Type 'RESET' to confirm: " confirm
+    [[ "${confirm}" == "RESET" ]] || { info "Aborted."; return; }
+
+    info "Stopping services..."
+    ${DC} down -v --remove-orphans
+
+    info "Pruning images..."
+    docker image prune -f
+
+    rm -f "${CHECKSUM_FILE}"
+
+    ok "Reset complete. Run 'fctl deploy' to start fresh."
+}
+
+# ── purge ────────────────────────────────────────────────────────────────
+# Force-clean ALL x402-* containers, volumes, and networks.
+# Does NOT require docker-compose.yml — works even when files are missing.
+cmd_purge() {
+    echo ""
+    warn "This will FORCE-REMOVE all x402-* containers, volumes, and networks."
+    warn "Use this when the environment is broken and 'reset' doesn't work."
+    echo ""
+    read -rp "Type 'PURGE' to confirm: " confirm
+    [[ "${confirm}" == "PURGE" ]] || { info "Aborted."; return; }
+
+    # Stop and remove all x402-* containers
+    local containers
+    containers=$(docker ps -a --filter "name=x402-" --format "{{.Names}}" 2>/dev/null) || true
+    if [[ -n "${containers}" ]]; then
+        info "Removing containers..."
+        echo "${containers}" | while IFS= read -r c; do
+            docker rm -f "${c}" 2>/dev/null && ok "Removed container: ${c}" || true
+        done
+    else
+        ok "No x402-* containers found"
+    fi
+
+    # Remove associated volumes
+    local volumes
+    volumes=$(docker volume ls --filter "name=x402" --format "{{.Name}}" 2>/dev/null) || true
+    if [[ -n "${volumes}" ]]; then
+        info "Removing volumes..."
+        echo "${volumes}" | while IFS= read -r v; do
+            docker volume rm -f "${v}" 2>/dev/null && ok "Removed volume: ${v}" || true
+        done
+    else
+        ok "No x402-* volumes found"
+    fi
+
+    # Remove associated networks
+    local networks
+    networks=$(docker network ls --filter "name=x402" --format "{{.Name}}" 2>/dev/null) || true
+    if [[ -n "${networks}" ]]; then
+        info "Removing networks..."
+        echo "${networks}" | while IFS= read -r n; do
+            docker network rm "${n}" 2>/dev/null && ok "Removed network: ${n}" || true
+        done
+    else
+        ok "No x402-* networks found"
+    fi
+
+    # Try docker compose down if compose file exists
+    if [[ -f "${DEPLOY_DIR}/docker-compose.yml" ]]; then
+        info "Running compose down for good measure..."
+        docker compose -f "${DEPLOY_DIR}/docker-compose.yml" down -v --remove-orphans 2>/dev/null || true
+    fi
+
+    # Prune dangling images
+    info "Pruning dangling images..."
+    docker image prune -f
+
+    # Clean state files
+    rm -f "${DEPLOY_DIR}/.config-checksums" "${DEPLOY_DIR}/.setup-state"
+
+    echo ""
+    ok "Purge complete. Environment is clean."
+    info "To redeploy: sudo bash setup.sh --force"
+    echo ""
+}
+
+# ── help ─────────────────────────────────────────────────────────────────
+cmd_help() {
+    echo ""
+    bold "  fctl — x402 Facilitator Management CLI"
+    echo ""
+    echo "  ${BOLD}Lifecycle:${NC}"
+    echo "    deploy          Pull latest images + recreate all containers"
+    echo "    reload          Smart reload (auto-detect config changes)"
+    echo "    update          Pull latest facilitator image + rolling restart"
+    echo ""
+    echo "  ${BOLD}Observability:${NC}"
+    echo "    status          Service dashboard (status, health, versions)"
+    echo "    logs [svc]      Follow logs (facilitator|caddy|watchtower|all)"
+    echo "    doctor          Run full diagnostics"
+    echo ""
+    echo "  ${BOLD}Configuration:${NC}"
+    echo "    edit <file>     Backup + edit + auto-reload (config|caddy|compose)"
+    echo "    backup          Backup all config files"
+    echo "    restore <ts>    Restore config from backup"
+    echo ""
+    echo "  ${BOLD}Maintenance:${NC}"
+    echo "    reset           Stop all + remove volumes (destructive)"
+    echo "    purge           Force-remove ALL x402-* containers/volumes/networks"
+    echo "    help            Show this help"
+    echo ""
+    echo "  ${DIM}Config directory: ${DEPLOY_DIR}${NC}"
+    echo ""
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# Entry point
+# ══════════════════════════════════════════════════════════════════════════
+CMD="${1:-help}"
+shift || true
+
+case "${CMD}" in
+    status)     cmd_status "$@" ;;
+    deploy)     cmd_deploy "$@" ;;
+    reload)     cmd_reload "$@" ;;
+    update)     cmd_update "$@" ;;
+    logs)       cmd_logs "$@" ;;
+    doctor)     cmd_doctor "$@" ;;
+    backup)     cmd_backup "$@" ;;
+    restore)    cmd_restore "$@" ;;
+    edit)       cmd_edit "$@" ;;
+    reset)      cmd_reset "$@" ;;
+    purge)      cmd_purge "$@" ;;
+    help|--help|-h)  cmd_help ;;
+    *)          err "Unknown command: ${CMD}"; cmd_help; exit 1 ;;
+esac
