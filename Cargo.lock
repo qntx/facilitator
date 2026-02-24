@@ -2170,7 +2170,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
- "r402",
+ "r402 0.11.0",
  "r402-evm",
  "r402-svm",
  "rustls",
@@ -4156,10 +4156,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "r402-evm"
-version = "0.11.0"
+name = "r402"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31d97bf31204c94439de3ba6fddd502ea7a35b64d7ed9a32171e056dbce0f060"
+checksum = "1c2b8b93721c85561d8c745823add73ae7c40e6fc1cc1bba3d72691b57d75838"
+dependencies = [
+ "base64 0.22.1",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "r402-evm"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9dc06000e1fecb1fb9cc6302587f3642a42151505152e534bb291685eaffee"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -4174,7 +4189,7 @@ dependencies = [
  "alloy-transport-http",
  "async-trait",
  "dashmap 6.1.0",
- "r402",
+ "r402 0.12.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -4194,7 +4209,7 @@ dependencies = [
  "bincode",
  "bs58",
  "futures-util",
- "r402",
+ "r402 0.11.0",
  "serde",
  "serde_json",
  "solana-account",
