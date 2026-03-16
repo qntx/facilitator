@@ -1,8 +1,8 @@
-//! Observability: structured logging and optional OpenTelemetry export.
+//! Observability: structured logging and optional `OpenTelemetry` export.
 //!
 //! [`Telemetry`] always initialises `tracing-subscriber` for structured console
 //! logging. When the `telemetry` feature is enabled **and** `OTEL_EXPORTER_OTLP_*`
-//! environment variables are present, it additionally registers OpenTelemetry
+//! environment variables are present, it additionally registers `OpenTelemetry`
 //! trace and metrics exporters via OTLP.
 
 use std::time::Duration;
@@ -32,7 +32,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 /// Observability configuration.
 ///
 /// Always initialises structured console logging. When the `telemetry` feature
-/// is active and OTLP env vars are set, also registers OpenTelemetry exporters.
+/// is active and OTLP env vars are set, also registers `OpenTelemetry` exporters.
 #[derive(Debug, Default)]
 pub struct Telemetry {
     name: Option<String>,
@@ -47,14 +47,14 @@ impl Telemetry {
         Self::default()
     }
 
-    /// Sets the service name (used for OTel resource identification).
+    /// Sets the service name (used for `OTel` resource identification).
     #[must_use]
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self
     }
 
-    /// Sets the service version (used for OTel resource identification).
+    /// Sets the service version (used for `OTel` resource identification).
     #[must_use]
     pub fn with_version(mut self, version: impl Into<String>) -> Self {
         self.version = Some(version.into());
@@ -71,7 +71,7 @@ impl Telemetry {
         self
     }
 
-    /// Initialises the tracing subscriber and optional OTel exporters.
+    /// Initialises the tracing subscriber and optional `OTel` exporters.
     ///
     /// Returns a [`TelemetryGuard`] that flushes exporters on drop.
     pub fn register(self) -> TelemetryGuard {
@@ -119,7 +119,7 @@ impl Telemetry {
         }
     }
 
-    /// Detect OTLP configuration and initialise OTel providers.
+    /// Detect OTLP configuration and initialise `OTel` providers.
     #[cfg(feature = "telemetry")]
     fn init_otel(&self) -> Option<OtelGuard> {
         let protocol = detect_protocol()?;
@@ -134,7 +134,7 @@ impl Telemetry {
         })
     }
 
-    /// Builds an OpenTelemetry [`Resource`] from the resolved service identity.
+    /// Builds an `OpenTelemetry` [`Resource`] from the resolved service identity.
     #[cfg(feature = "telemetry")]
     fn build_resource(&self) -> Resource {
         let name = resolve_otel_env("OTEL_SERVICE_NAME", self.name.as_deref());
@@ -159,7 +159,7 @@ impl Telemetry {
     }
 }
 
-/// Resolve an OTel env var, falling back to a programmatic default.
+/// Resolve an `OTel` env var, falling back to a programmatic default.
 #[cfg(feature = "telemetry")]
 fn resolve_otel_env(env_key: &str, fallback: Option<&str>) -> Option<String> {
     std::env::var(env_key)
@@ -168,7 +168,7 @@ fn resolve_otel_env(env_key: &str, fallback: Option<&str>) -> Option<String> {
         .or_else(|| fallback.map(String::from))
 }
 
-/// Detect OTLP protocol from environment. Returns `None` if OTel is not configured.
+/// Detect OTLP protocol from environment. Returns `None` if `OTel` is not configured.
 #[cfg(feature = "telemetry")]
 fn detect_protocol() -> Option<OtlpProtocol> {
     let configured = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok()
@@ -236,7 +236,7 @@ fn build_meter(protocol: OtlpProtocol, resource: Resource) -> Option<SdkMeterPro
     Some(provider)
 }
 
-/// Internal OTel state; performs graceful shutdown on drop.
+/// Internal `OTel` state; performs graceful shutdown on drop.
 #[cfg(feature = "telemetry")]
 #[derive(Debug)]
 struct OtelGuard {
@@ -260,7 +260,7 @@ impl Drop for OtelGuard {
     }
 }
 
-/// Owns OTel providers (if active) and flushes them on drop.
+/// Owns `OTel` providers (if active) and flushes them on drop.
 ///
 /// Also provides [`http_trace_layer`](TelemetryGuard::http_trace_layer) for
 /// Axum middleware setup.
@@ -333,7 +333,7 @@ impl<A> OnResponse<A> for HttpOnResponse {
 
         tracing::info!(
             status = status.as_u16(),
-            elapsed_ms = latency.as_millis() as u64,
+            elapsed_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
             "request completed"
         );
     }
