@@ -143,10 +143,9 @@ pub fn load_config(path: &Path) -> Result<Config, Error> {
     // Step 2: auto-generate [[schemes]] if absent
     auto_generate_schemes(&mut doc);
 
-    let processed =
-        toml::to_string(&doc).map_err(|e| Error::config_with("failed to serialize config", e))?;
-    let config: Config =
-        toml::from_str(&processed).map_err(|e| Error::config_with("failed to parse config", e))?;
+    let config: Config = toml::Value::Table(doc.into_iter().collect())
+        .try_into()
+        .map_err(|e: toml::de::Error| Error::config_with("invalid config", e))?;
     Ok(config)
 }
 

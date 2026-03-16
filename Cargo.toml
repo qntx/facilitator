@@ -21,7 +21,6 @@ opentelemetry = "0.31"
 opentelemetry-otlp = { version = "0.31", features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = "0.31"
 opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
-opentelemetry-stdout = { version = "0.31", features = ["trace", "metrics"] }
 r402 = { version = "0.12" }
 r402-evm = { version = "0.12", features = ["facilitator"] }
 r402-svm = { version = "0.12", features = ["facilitator"] }
@@ -31,7 +30,6 @@ serde_json = "1"
 solana-keypair = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
-tokio-util = { version = "0.7", features = ["rt"] }
 toml = "0.9.8"
 tower-http = { version = "0.6", features = ["trace", "cors", "timeout"] }
 tracing = "0.1"

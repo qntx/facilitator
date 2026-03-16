@@ -2240,7 +2240,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
- "opentelemetry-stdout",
  "opentelemetry_sdk",
  "r402",
  "r402-evm",
@@ -3760,17 +3759,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e62e29dfe041afb8ed2a6c9737ab57db4907285d999ef8ad3a59092a36bdc846"
 
 [[package]]
-name = "opentelemetry-stdout"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc8887887e169414f637b18751487cce4e095be787d23fad13c454e2fb1b3811"
-dependencies = [
- "chrono",
- "opentelemetry",
- "opentelemetry_sdk",
-]
-
-[[package]]
 name = "opentelemetry_sdk"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4218,9 +4206,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "r402"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c2b8b93721c85561d8c745823add73ae7c40e6fc1cc1bba3d72691b57d75838"
+checksum = "7b24f158dad44913902238c857cd18b2c00cf8a667c33c95debac6e778938848"
 dependencies = [
  "base64 0.22.1",
  "rust_decimal",
@@ -4233,9 +4221,9 @@ dependencies = [
 
 [[package]]
 name = "r402-evm"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f9dc06000e1fecb1fb9cc6302587f3642a42151505152e534bb291685eaffee"
+checksum = "a71584c0d9bbaba3d88ff4dd683ec94a105f7cfec0c11836f4f5e0355b271136"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -4263,9 +4251,9 @@ dependencies = [
 
 [[package]]
 name = "r402-svm"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bac44b9c47dac5851722b5c2845a03bb159dc6be4e8d6f6b17a8efe270d46a1"
+checksum = "29286650f55ceb955c2ecedc196c9cf03ab51d7cbacc9027ac61d52ad66bd186"
 dependencies = [
  "bincode",
  "bs58",

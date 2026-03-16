@@ -18,7 +18,6 @@ use axum::{Json, Router, response::IntoResponse};
 use r402::facilitator::Facilitator;
 use r402::proto;
 use serde_json::json;
-#[cfg(feature = "telemetry")]
 use tracing::instrument;
 
 /// Type alias for the shared facilitator state used by Axum route handlers.
@@ -35,7 +34,7 @@ pub fn routes() -> Router<FacilitatorState> {
 }
 
 /// `GET /` — simple greeting.
-#[cfg_attr(feature = "telemetry", instrument(skip_all))]
+#[instrument(skip_all)]
 async fn get_root() -> impl IntoResponse {
     (
         StatusCode::OK,
@@ -44,18 +43,17 @@ async fn get_root() -> impl IntoResponse {
 }
 
 /// `GET /health` — lightweight liveness check.
-#[cfg_attr(feature = "telemetry", instrument(skip_all))]
+#[instrument(skip_all)]
 async fn get_health() -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "status": "ok" })))
 }
 
 /// `GET /supported` — lists supported payment schemes and networks.
-#[cfg_attr(feature = "telemetry", instrument(skip_all))]
+#[instrument(skip_all)]
 async fn get_supported(State(facilitator): State<FacilitatorState>) -> impl IntoResponse {
     match facilitator.supported().await {
         Ok(supported) => (StatusCode::OK, Json(json!(supported))).into_response(),
         Err(error) => {
-            #[cfg(feature = "telemetry")]
             tracing::error!(error = ?error, "Failed to query supported schemes");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -70,7 +68,7 @@ async fn get_supported(State(facilitator): State<FacilitatorState>) -> impl Into
 ///
 /// All errors are converted to `VerifyResponse::Invalid` (HTTP 200) to preserve
 /// structured reason codes on the wire.
-#[cfg_attr(feature = "telemetry", instrument(skip_all))]
+#[instrument(skip_all)]
 async fn post_verify(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::VerifyRequest>, JsonRejection>,
@@ -85,7 +83,6 @@ async fn post_verify(
     let response = match facilitator.verify(request).await {
         Ok(resp) => resp,
         Err(ref error) => {
-            #[cfg(feature = "telemetry")]
             tracing::warn!(?error, "verification failed");
             proto::VerifyResponse::from_facilitator_error(error)
         }
@@ -97,7 +94,7 @@ async fn post_verify(
 ///
 /// All errors are converted to `SettleResponse::Error` (HTTP 200) to preserve
 /// structured reason codes on the wire.
-#[cfg_attr(feature = "telemetry", instrument(skip_all))]
+#[instrument(skip_all)]
 async fn post_settle(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<proto::SettleRequest>, JsonRejection>,
@@ -113,7 +110,6 @@ async fn post_settle(
     let response = match facilitator.settle(request).await {
         Ok(resp) => resp,
         Err(ref error) => {
-            #[cfg(feature = "telemetry")]
             tracing::warn!(?error, "settlement failed");
             proto::SettleResponse::from_facilitator_error(error, network)
         }

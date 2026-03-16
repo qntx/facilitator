@@ -14,7 +14,6 @@ mod config;
 mod error;
 mod routes;
 mod signers;
-#[cfg(feature = "telemetry")]
 mod telemetry;
 
 use clap::Parser;

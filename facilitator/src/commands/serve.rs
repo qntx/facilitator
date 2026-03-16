@@ -26,7 +26,6 @@ use crate::chain::build_chain_registry;
 use crate::config::load_config;
 use crate::error::Error;
 use crate::routes::{self, FacilitatorState};
-#[cfg(feature = "telemetry")]
 use crate::telemetry::Telemetry;
 
 /// Execute the `serve` command.
@@ -41,27 +40,21 @@ use crate::telemetry::Telemetry;
 /// Panics if the rustls crypto provider cannot be installed.
 #[allow(clippy::cognitive_complexity, clippy::future_not_send)]
 pub async fn run(config_path: &Path) -> Result<(), Error> {
-    // Initialize rustls crypto provider (ring)
     rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
         .expect("Failed to initialize rustls crypto provider");
 
-    // Load .env variables
     dotenv().ok();
 
     let config = load_config(config_path)?;
 
-    #[cfg(feature = "telemetry")]
-    let telemetry_guard = Telemetry::new()
+    let guard = Telemetry::new()
         .with_name(env!("CARGO_PKG_NAME"))
         .with_version(env!("CARGO_PKG_VERSION"))
         .with_log_level(config.log_level())
         .register();
-    #[cfg(feature = "telemetry")]
-    let telemetry_layer = telemetry_guard.http_tracing();
 
     let chain_registry = build_chain_registry(config.chains()).await?;
 
-    // Build scheme registry by registering blueprints for each configured scheme.
     #[allow(unused_mut)]
     let mut scheme_registry = SchemeRegistry::new();
     for scheme_entry in config.schemes() {
@@ -69,7 +62,6 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
         for provider in matching_providers {
             let chain_id = provider.chain_id();
             let namespace = chain_id.namespace();
-            #[allow(unused_variables)]
             let result: Result<(), Box<dyn std::error::Error>> = match namespace {
                 #[cfg(feature = "chain-eip155")]
                 "eip155" => {
@@ -80,7 +72,6 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
                     scheme_registry.register(&SolanaExact, provider, scheme_entry.config.clone())
                 }
                 _ => {
-                    #[cfg(feature = "telemetry")]
                     tracing::warn!(
                         namespace,
                         chain = %chain_id,
@@ -92,7 +83,6 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
             };
             #[allow(unreachable_code)]
             if let Err(e) = result {
-                #[cfg(feature = "telemetry")]
                 tracing::warn!(
                     chain = %chain_id,
                     scheme = %scheme_entry.id,
@@ -103,16 +93,12 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
         }
     }
 
-    // Wrap with HookedFacilitator to enable lifecycle hooks.
-    // SchemeRegistry implements Facilitator directly — no wrapper needed.
     let facilitator = HookedFacilitator::new(scheme_registry);
-
     let axum_state: FacilitatorState = Arc::new(facilitator);
 
-    let http_endpoints = Router::new().merge(routes::routes().with_state(Arc::clone(&axum_state)));
-    #[cfg(feature = "telemetry")]
-    let http_endpoints = http_endpoints.layer(telemetry_layer);
-    let http_endpoints = http_endpoints
+    let http_endpoints = Router::new()
+        .merge(routes::routes().with_state(Arc::clone(&axum_state)))
+        .layer(guard.http_trace_layer())
         .layer(
             cors::CorsLayer::new()
                 .allow_origin(cors::Any)
@@ -126,13 +112,12 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
         ));
 
     let addr = SocketAddr::new(config.host(), config.port());
-    #[cfg(feature = "telemetry")]
     tracing::info!("Starting server at http://{}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await;
-    #[cfg(feature = "telemetry")]
-    let listener = listener.inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e));
-    let listener = listener.map_err(|e| Error::server_with("failed to bind", e))?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e))
+        .map_err(|e| Error::server_with("failed to bind", e))?;
 
     axum::serve(listener, http_endpoints)
         .with_graceful_shutdown(shutdown_signal())

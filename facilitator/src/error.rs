@@ -80,7 +80,7 @@ impl Error {
             source: None,
         }
     }
-
+    
     /// Create a chain error with context only.
     pub(crate) fn chain(context: impl Into<String>) -> Self {
         Self::Chain {
