@@ -9,7 +9,7 @@
 //! ```
 
 mod chain;
-mod cmd;
+mod commands;
 mod config;
 mod error;
 mod routes;
@@ -18,7 +18,7 @@ mod signers;
 mod telemetry;
 
 use clap::Parser;
-use cmd::{Cli, Commands};
+use commands::{Cli, Commands};
 use error::Error;
 
 #[tokio::main]
@@ -27,8 +27,8 @@ async fn main() {
     let cli = Cli::parse();
 
     let result: Result<(), Error> = match cli.command {
-        Commands::Init { output, force } => cmd::init::run(&output, force),
-        Commands::Serve { config } => cmd::serve::run(&config).await,
+        Commands::Init { output, force } => commands::init::run(&output, force),
+        Commands::Serve { config } => commands::serve::run(&config).await,
     };
 
     if let Err(ref e) = result {
