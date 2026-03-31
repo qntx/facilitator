@@ -11,7 +11,7 @@ repository = "https://github.com/qntx/facilitator"
 description = "X402 Facilitator"
 
 [workspace.dependencies]
-alloy-network = "1.7"
+alloy-network = "1.8"
 alloy-signer-local = "1.7"
 axum = "0.8"
 bs58 = { version = "0.5", features = ["alloc"] }
