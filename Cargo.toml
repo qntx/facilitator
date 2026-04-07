@@ -30,7 +30,7 @@ serde_json = "1"
 solana-keypair = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
-toml = "1.1.0"
+toml = "1.1.2"
 tower-http = { version = "0.6", features = ["trace", "cors", "timeout"] }
 tracing = "0.1"
 url = "2"
