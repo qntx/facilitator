@@ -2,8 +2,8 @@
 //!
 //! This module provides:
 //!
-//! - [`Config`] — Type alias combining the base [`r402::config::Config`] with
-//!   chain-specific [`ChainsConfig`](crate::chain::ChainsConfig).
+//! - [`Config`] — Server configuration combining host/port, chain configs,
+//!   and scheme registrations backed by [`ChainsConfig`].
 //! - [`load_config`] — Reads and parses a TOML configuration file, with
 //!   automatic global-signer injection and scheme auto-generation.
 //!

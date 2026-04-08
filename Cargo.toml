@@ -19,8 +19,8 @@ clap = { version = "4.6.0", features = ["derive", "env"] }
 dotenvy = "0.15.7"
 opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["metrics", "grpc-tonic"] }
-opentelemetry_sdk = "0.31.0"
 opentelemetry-semantic-conventions = { version = "0.31.0", features = ["semconv_experimental"] }
+opentelemetry_sdk = "0.31.0"
 r402 = { version = "0.13.0" }
 r402-evm = { version = "0.13.0", features = ["facilitator"] }
 r402-svm = { version = "0.13.0", features = ["facilitator"] }
@@ -33,9 +33,9 @@ tokio = { version = "1.51.0", features = ["rt-multi-thread", "macros", "signal"]
 toml = "1.1.2"
 tower-http = { version = "0.6.8", features = ["trace", "cors", "timeout"] }
 tracing = "0.1.44"
-url = "2.5.8"
 tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+url = "2.5.8"
 
 [profile.release]
 codegen-units = 1

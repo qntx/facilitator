@@ -2,7 +2,7 @@
 //!
 //! - [`config`] — Chain configuration types and CAIP-2 keyed TOML (de)serialisation.
 //! - [`provider`] — [`ChainProvider`] enum, trait impl, and registry construction.
-//! - [`schemes`] — [`SchemeBuilder`] implementations bridging providers to scheme handlers.
+//! - [`schemes`] — `SchemeBuilder` implementations bridging providers to scheme handlers.
 
 mod config;
 mod provider;
