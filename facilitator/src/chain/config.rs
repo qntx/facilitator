@@ -1,7 +1,5 @@
 //! Chain configuration types and CAIP-2 keyed TOML (de)serialisation.
 
-use std::ops::Deref;
-
 use r402::chain::ChainId;
 #[cfg(feature = "chain-eip155")]
 use r402_evm::chain as eip155;
@@ -144,13 +142,18 @@ pub(crate) enum ChainConfig {
 ///
 /// Serialised as a TOML map keyed by CAIP-2 chain identifiers.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ChainsConfig(pub Vec<ChainConfig>);
+pub(crate) struct ChainsConfig(Vec<ChainConfig>);
 
-impl Deref for ChainsConfig {
-    type Target = Vec<ChainConfig>;
+impl ChainsConfig {
+    /// Returns the number of configured chains.
+    #[must_use]
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    /// Returns an iterator over the chain configurations.
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, ChainConfig> {
+        self.0.iter()
     }
 }
 
