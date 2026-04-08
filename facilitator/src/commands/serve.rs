@@ -24,9 +24,9 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::chain::build_chain_registry;
 use crate::config::load_config;
-use crate::error::Error;
+use crate::error::AppError;
 use crate::routes::{self, FacilitatorState};
-use crate::telemetry::Telemetry;
+use crate::telemetry::{Telemetry, TelemetryGuard};
 
 /// Execute the `serve` command.
 ///
@@ -34,30 +34,53 @@ use crate::telemetry::Telemetry;
 ///
 /// Returns an error if configuration loading, provider initialisation,
 /// or server binding fails.
-///
-/// # Panics
-///
-/// Panics if the rustls crypto provider cannot be installed.
-#[allow(clippy::cognitive_complexity, clippy::future_not_send)]
-pub async fn run(config_path: &Path) -> Result<(), Error> {
-    rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
-        .expect("Failed to initialize rustls crypto provider");
+pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
+    // Failure means a provider was already installed, which is acceptable.
+    drop(rustls::crypto::CryptoProvider::install_default(
+        rustls::crypto::ring::default_provider(),
+    ));
 
     dotenv().ok();
 
     let config = load_config(config_path)?;
 
-    let guard = Telemetry::new()
+    let _guard = Telemetry::new()
         .with_name(env!("CARGO_PKG_NAME"))
         .with_version(env!("CARGO_PKG_VERSION"))
         .with_log_level(config.log_level())
         .register();
 
     let chain_registry = build_chain_registry(config.chains()).await?;
+    let scheme_registry = register_schemes(&chain_registry, config.schemes());
 
-    #[allow(unused_mut)]
+    let facilitator = HookedFacilitator::new(scheme_registry);
+    let axum_state: FacilitatorState = Arc::new(facilitator);
+
+    let http_endpoints = build_router(Arc::clone(&axum_state));
+
+    let addr = SocketAddr::new(config.host(), config.port());
+    tracing::info!("Starting server at http://{}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e))
+        .map_err(|e| AppError::server_with("failed to bind", e))?;
+
+    axum::serve(listener, http_endpoints)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .map_err(|e| AppError::server_with("server error", e))?;
+
+    Ok(())
+}
+
+/// Register scheme handlers for all configured chain/scheme combinations.
+fn register_schemes(
+    chain_registry: &r402::chain::ChainRegistry<crate::chain::ChainProvider>,
+    schemes: &[crate::config::SchemeEntry],
+) -> SchemeRegistry {
     let mut scheme_registry = SchemeRegistry::new();
-    for scheme_entry in config.schemes() {
+    for scheme_entry in schemes {
         let matching_providers = chain_registry.by_chain_id_pattern(&scheme_entry.chains);
         for provider in matching_providers {
             let chain_id = provider.chain_id();
@@ -81,7 +104,6 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
                     Ok(())
                 }
             };
-            #[allow(unreachable_code)]
             if let Err(e) = result {
                 tracing::warn!(
                     chain = %chain_id,
@@ -92,13 +114,14 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
             }
         }
     }
+    scheme_registry
+}
 
-    let facilitator = HookedFacilitator::new(scheme_registry);
-    let axum_state: FacilitatorState = Arc::new(facilitator);
-
-    let http_endpoints = Router::new()
-        .merge(routes::routes().with_state(Arc::clone(&axum_state)))
-        .layer(guard.http_trace_layer())
+/// Build the Axum router with all middleware layers.
+fn build_router(state: FacilitatorState) -> Router {
+    Router::new()
+        .merge(routes::routes().with_state(state))
+        .layer(TelemetryGuard::http_trace_layer())
         .layer(
             cors::CorsLayer::new()
                 .allow_origin(cors::Any)
@@ -109,22 +132,7 @@ pub async fn run(config_path: &Path) -> Result<(), Error> {
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
             Duration::from_secs(45),
-        ));
-
-    let addr = SocketAddr::new(config.host(), config.port());
-    tracing::info!("Starting server at http://{}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e))
-        .map_err(|e| Error::server_with("failed to bind", e))?;
-
-    axum::serve(listener, http_endpoints)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| Error::server_with("server error", e))?;
-
-    Ok(())
+        ))
 }
 
 /// Wait for a shutdown signal (Ctrl+C on all platforms, SIGTERM on Unix).
@@ -132,14 +140,18 @@ async fn shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let mut sigterm = signal(SignalKind::terminate()).expect("failed to register SIGTERM");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = sigterm.recv() => {}
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = sigterm.recv() => {}
+                }
+            }
+            Err(_) => drop(tokio::signal::ctrl_c().await),
         }
     }
     #[cfg(not(unix))]
     {
-        let _ = tokio::signal::ctrl_c().await;
+        drop(tokio::signal::ctrl_c().await);
     }
 }

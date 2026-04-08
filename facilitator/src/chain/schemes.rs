@@ -21,13 +21,11 @@ impl SchemeBuilder<&ChainProvider> for Eip155Exact {
         provider: &ChainProvider,
         config: Option<serde_json::Value>,
     ) -> Result<Box<dyn Facilitator>, Box<dyn std::error::Error>> {
-        #[allow(irrefutable_let_patterns)]
-        let eip155_provider = if let ChainProvider::Eip155(provider) = provider {
-            Arc::clone(provider)
-        } else {
-            return Err("Eip155Exact::build: provider must be an Eip155ChainProvider".into());
-        };
-        self.build(eip155_provider, config)
+        match provider {
+            ChainProvider::Eip155(inner) => self.build(Arc::clone(inner), config),
+            #[cfg(feature = "chain-solana")]
+            _ => Err("Eip155Exact::build: provider must be an Eip155ChainProvider".into()),
+        }
     }
 }
 
@@ -38,12 +36,10 @@ impl SchemeBuilder<&ChainProvider> for SolanaExact {
         provider: &ChainProvider,
         config: Option<serde_json::Value>,
     ) -> Result<Box<dyn Facilitator>, Box<dyn std::error::Error>> {
-        #[allow(irrefutable_let_patterns)]
-        let solana_provider = if let ChainProvider::Solana(provider) = provider {
-            Arc::clone(provider)
-        } else {
-            return Err("SolanaExact::build: provider must be a SolanaChainProvider".into());
-        };
-        self.build(solana_provider, config)
+        match provider {
+            ChainProvider::Solana(inner) => self.build(Arc::clone(inner), config),
+            #[cfg(feature = "chain-eip155")]
+            _ => Err("SolanaExact::build: provider must be a SolanaChainProvider".into()),
+        }
     }
 }

@@ -4,14 +4,14 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-pub mod init;
-pub mod serve;
+pub(crate) mod init;
+pub(crate) mod serve;
 
 /// x402 Facilitator — payment verification and settlement server.
 #[derive(Debug, Parser)]
 #[command(name = "facilitator")]
 #[command(version, about, long_about = None)]
-pub struct Cli {
+pub(crate) struct Cli {
     /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Commands,
@@ -19,7 +19,7 @@ pub struct Cli {
 
 /// Available subcommands.
 #[derive(Debug, Subcommand)]
-pub enum Commands {
+pub(crate) enum Commands {
     /// Generate a default TOML configuration file.
     Init {
         /// Output path for the configuration file.

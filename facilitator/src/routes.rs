@@ -21,10 +21,10 @@ use serde_json::json;
 use tracing::instrument;
 
 /// Type alias for the shared facilitator state used by Axum route handlers.
-pub type FacilitatorState = Arc<dyn Facilitator>;
+pub(crate) type FacilitatorState = Arc<dyn Facilitator>;
 
 /// Creates the Axum router with all x402 facilitator endpoints.
-pub fn routes() -> Router<FacilitatorState> {
+pub(crate) fn routes() -> Router<FacilitatorState> {
     Router::new()
         .route("/", get(get_root))
         .route("/verify", post(post_verify))

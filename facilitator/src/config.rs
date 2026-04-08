@@ -31,12 +31,12 @@ use r402::chain::ChainIdPattern;
 use serde::{Deserialize, Serialize};
 
 use crate::chain::ChainsConfig;
-use crate::error::Error;
+use crate::error::AppError;
 use crate::signers;
 
 /// Scheme registration entry from the TOML config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SchemeEntry {
+pub(crate) struct SchemeEntry {
     /// Scheme identifier (e.g. "v2-eip155-exact").
     pub id: String,
     /// Chain pattern (e.g. "eip155:*").
@@ -48,7 +48,7 @@ pub struct SchemeEntry {
 
 /// Server configuration combining host/port, chain configs, and scheme registrations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
+pub(crate) struct Config {
     /// Bind address (default: 0.0.0.0).
     #[serde(default = "default_host")]
     host: IpAddr,
@@ -70,10 +70,12 @@ pub struct Config {
     schemes: Vec<SchemeEntry>,
 }
 
+/// Default bind address: all interfaces.
 const fn default_host() -> IpAddr {
     IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
 }
 
+/// Default listen port, overridable via `PORT` env var.
 fn default_port() -> u16 {
     std::env::var("PORT")
         .ok()
@@ -81,6 +83,7 @@ fn default_port() -> u16 {
         .unwrap_or(8080)
 }
 
+/// Default log level filter string.
 fn default_log_level() -> String {
     "info".to_owned()
 }
@@ -88,31 +91,31 @@ fn default_log_level() -> String {
 impl Config {
     /// Returns the configured bind address.
     #[must_use]
-    pub const fn host(&self) -> IpAddr {
+    pub(crate) const fn host(&self) -> IpAddr {
         self.host
     }
 
     /// Returns the configured listen port.
     #[must_use]
-    pub const fn port(&self) -> u16 {
+    pub(crate) const fn port(&self) -> u16 {
         self.port
     }
 
     /// Returns the configured log level filter string.
     #[must_use]
-    pub fn log_level(&self) -> &str {
+    pub(crate) fn log_level(&self) -> &str {
         &self.log_level
     }
 
     /// Returns a reference to the chain configurations.
     #[must_use]
-    pub const fn chains(&self) -> &ChainsConfig {
+    pub(crate) const fn chains(&self) -> &ChainsConfig {
         &self.chains
     }
 
     /// Returns a reference to the scheme registrations.
     #[must_use]
-    pub fn schemes(&self) -> &[SchemeEntry] {
+    pub(crate) fn schemes(&self) -> &[SchemeEntry] {
         &self.schemes
     }
 }
@@ -125,16 +128,16 @@ impl Config {
 /// # Errors
 ///
 /// Returns an error if the file cannot be resolved, read, or parsed.
-pub fn load_config(path: &Path) -> Result<Config, Error> {
+pub(crate) fn load_config(path: &Path) -> Result<Config, AppError> {
     let config_path = path
         .canonicalize()
-        .map_err(|e| Error::config_with(format!("failed to resolve '{}'", path.display()), e))?;
+        .map_err(|e| AppError::config_with(format!("failed to resolve '{}'", path.display()), e))?;
     let raw_content = std::fs::read_to_string(&config_path).map_err(|e| {
-        Error::config_with(format!("failed to read '{}'", config_path.display()), e)
+        AppError::config_with(format!("failed to read '{}'", config_path.display()), e)
     })?;
 
     let mut doc: BTreeMap<String, toml::Value> = toml::from_str(&raw_content).map_err(|e| {
-        Error::config_with(format!("failed to parse '{}'", config_path.display()), e)
+        AppError::config_with(format!("failed to parse '{}'", config_path.display()), e)
     })?;
 
     // Step 1: resolve signers and inject into chain entries
@@ -145,7 +148,7 @@ pub fn load_config(path: &Path) -> Result<Config, Error> {
 
     let config: Config = toml::Value::Table(doc.into_iter().collect())
         .try_into()
-        .map_err(|e: toml::de::Error| Error::config_with("invalid config", e))?;
+        .map_err(|e: toml::de::Error| AppError::config_with("invalid config", e))?;
     Ok(config)
 }
 
@@ -223,8 +226,14 @@ mod tests {
     fn scheme_entry_builds_correct_table() {
         let entry = scheme_entry("eip155-exact", "eip155:*");
         let table = entry.as_table().unwrap();
-        assert_eq!(table["id"].as_str(), Some("eip155-exact"));
-        assert_eq!(table["chains"].as_str(), Some("eip155:*"));
+        assert_eq!(
+            table.get("id").and_then(toml::Value::as_str),
+            Some("eip155-exact")
+        );
+        assert_eq!(
+            table.get("chains").and_then(toml::Value::as_str),
+            Some("eip155:*")
+        );
     }
 
     #[test]
@@ -241,11 +250,17 @@ mod tests {
 
         #[cfg(feature = "chain-eip155")]
         {
-            let schemes = doc["schemes"].as_array().unwrap();
+            let schemes = doc.get("schemes").and_then(toml::Value::as_array).unwrap();
             assert!(!schemes.is_empty());
-            let first = schemes[0].as_table().unwrap();
-            assert_eq!(first["id"].as_str(), Some("eip155-exact"));
-            assert_eq!(first["chains"].as_str(), Some("eip155:*"));
+            let first = schemes.first().and_then(toml::Value::as_table).unwrap();
+            assert_eq!(
+                first.get("id").and_then(toml::Value::as_str),
+                Some("eip155-exact")
+            );
+            assert_eq!(
+                first.get("chains").and_then(toml::Value::as_str),
+                Some("eip155:*")
+            );
         }
     }
 
@@ -265,10 +280,14 @@ mod tests {
 
         auto_generate_schemes(&mut doc);
 
-        let schemes = doc["schemes"].as_array().unwrap();
+        let schemes = doc.get("schemes").and_then(toml::Value::as_array).unwrap();
         assert_eq!(schemes.len(), 1);
         assert_eq!(
-            schemes[0].as_table().unwrap()["id"].as_str(),
+            schemes
+                .first()
+                .and_then(toml::Value::as_table)
+                .and_then(|t| t.get("id"))
+                .and_then(toml::Value::as_str),
             Some("custom-scheme")
         );
     }
@@ -288,7 +307,7 @@ mod tests {
 
         #[cfg(feature = "chain-eip155")]
         {
-            let schemes = doc["schemes"].as_array().unwrap();
+            let schemes = doc.get("schemes").and_then(toml::Value::as_array).unwrap();
             assert!(!schemes.is_empty());
         }
     }
@@ -306,8 +325,8 @@ mod tests {
         assert_eq!(config.host(), "127.0.0.1".parse::<IpAddr>().unwrap());
         assert!(config.schemes().is_empty());
 
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_dir(&dir);
+        drop(std::fs::remove_file(&path));
+        drop(std::fs::remove_dir(&dir));
     }
 
     #[test]
@@ -326,7 +345,7 @@ mod tests {
         let result = load_config(&path);
         assert!(result.is_err());
 
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_dir(&dir);
+        drop(std::fs::remove_file(&path));
+        drop(std::fs::remove_dir(&dir));
     }
 }

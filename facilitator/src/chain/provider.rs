@@ -1,6 +1,5 @@
 //! Chain provider types and registry construction.
 
-use std::collections::HashMap;
 #[cfg(any(feature = "chain-eip155", feature = "chain-solana"))]
 use std::sync::Arc;
 
@@ -11,7 +10,7 @@ use r402_evm::chain as eip155;
 use r402_svm::chain as solana;
 
 use super::config::{ChainConfig, ChainsConfig};
-use crate::error::Error;
+use crate::error::AppError;
 
 /// Unified blockchain provider wrapping chain-family–specific implementations.
 #[derive(Debug, Clone)]
@@ -31,8 +30,6 @@ impl ChainProviderTrait for ChainProvider {
             Self::Eip155(provider) => provider.signer_addresses(),
             #[cfg(feature = "chain-solana")]
             Self::Solana(provider) => provider.signer_addresses(),
-            #[allow(unreachable_patterns)]
-            _ => unreachable!("ChainProvider variant not enabled in this build"),
         }
     }
 
@@ -42,8 +39,6 @@ impl ChainProviderTrait for ChainProvider {
             Self::Eip155(provider) => provider.chain_id(),
             #[cfg(feature = "chain-solana")]
             Self::Solana(provider) => provider.chain_id(),
-            #[allow(unreachable_patterns)]
-            _ => unreachable!("ChainProvider variant not enabled in this build"),
         }
     }
 }
@@ -57,14 +52,12 @@ impl ChainProviderTrait for ChainProvider {
 ///
 /// Returns an error if the provider cannot be constructed (e.g. invalid keys,
 /// RPC connection failure).
-pub async fn build_chain_provider(config: &ChainConfig) -> Result<ChainProvider, Error> {
+pub(crate) async fn build_chain_provider(config: &ChainConfig) -> Result<ChainProvider, AppError> {
     match config {
         #[cfg(feature = "chain-eip155")]
         ChainConfig::Eip155(config) => build_eip155_provider(config),
         #[cfg(feature = "chain-solana")]
         ChainConfig::Solana(config) => build_solana_provider(config).await,
-        #[allow(unreachable_patterns)]
-        _ => unreachable!("ChainConfig variant not enabled in this build"),
     }
 }
 
@@ -77,7 +70,7 @@ pub async fn build_chain_provider(config: &ChainConfig) -> Result<ChainProvider,
 #[cfg(feature = "chain-eip155")]
 fn build_eip155_provider(
     config: &super::config::Eip155ChainConfig,
-) -> Result<ChainProvider, Error> {
+) -> Result<ChainProvider, AppError> {
     use alloy_network::EthereumWallet;
     use alloy_signer_local::PrivateKeySigner;
     use url::Url;
@@ -88,19 +81,22 @@ fn build_eip155_provider(
         .iter()
         .map(|k| {
             k.parse()
-                .map_err(|e| Error::chain(format!("failed to parse EVM signer key: {e}")))
+                .map_err(|e| AppError::chain(format!("failed to parse EVM signer key: {e}")))
         })
         .collect::<Result<_, _>>()?;
 
     if signers.is_empty() {
-        return Err(Error::chain(format!(
+        return Err(AppError::chain(format!(
             "no signers configured for EVM chain {}",
             config.chain_id()
         )));
     }
 
     let mut iter = signers.into_iter();
-    let mut wallet = EthereumWallet::from(iter.next().expect("checked non-empty"));
+    let first = iter.next().ok_or_else(|| {
+        AppError::chain(format!("no signers for EVM chain {}", config.chain_id()))
+    })?;
+    let mut wallet = EthereumWallet::from(first);
     for s in iter {
         wallet.register_signer(s);
     }
@@ -120,7 +116,7 @@ fn build_eip155_provider(
         config.inner.flashblocks,
         config.inner.receipt_timeout_secs,
     )
-    .map_err(|e| Error::chain(format!("EVM provider init failed: {e}")))?;
+    .map_err(|e| AppError::chain(format!("EVM provider init failed: {e}")))?;
 
     Ok(ChainProvider::Eip155(Arc::new(provider)))
 }
@@ -134,11 +130,11 @@ fn build_eip155_provider(
 #[cfg(feature = "chain-solana")]
 async fn build_solana_provider(
     config: &super::config::SolanaChainConfig,
-) -> Result<ChainProvider, Error> {
+) -> Result<ChainProvider, AppError> {
     use solana_keypair::Keypair;
 
     let signer_str = config.inner.signer.as_ref().ok_or_else(|| {
-        Error::chain(format!(
+        AppError::chain(format!(
             "no signer configured for Solana chain {}",
             config.chain_id()
         ))
@@ -146,14 +142,14 @@ async fn build_solana_provider(
 
     let keypair_bytes = bs58::decode(signer_str)
         .into_vec()
-        .map_err(|e| Error::chain_with("failed to decode Solana signer key", e))?;
+        .map_err(|e| AppError::chain_with("failed to decode Solana signer key", e))?;
 
     // solana-keypair v3: construct from 32-byte secret key array
     let secret_bytes: [u8; 32] = keypair_bytes
         .get(..32)
         .and_then(|s| s.try_into().ok())
         .ok_or_else(|| {
-            Error::chain(format!(
+            AppError::chain(format!(
                 "Solana signer key must be at least 32 bytes, got {}",
                 keypair_bytes.len()
             ))
@@ -169,7 +165,7 @@ async fn build_solana_provider(
         config.inner.max_compute_unit_price,
     )
     .await
-    .map_err(|e| Error::chain(format!("failed to create Solana provider: {e}")))?;
+    .map_err(|e| AppError::chain(format!("failed to create Solana provider: {e}")))?;
 
     Ok(ChainProvider::Solana(Arc::new(provider)))
 }
@@ -179,13 +175,13 @@ async fn build_solana_provider(
 /// # Errors
 ///
 /// Returns an error if any chain provider fails to initialise.
-pub async fn build_chain_registry(
+pub(crate) async fn build_chain_registry(
     chains: &ChainsConfig,
-) -> Result<ChainRegistry<ChainProvider>, Error> {
-    let mut providers = HashMap::new();
+) -> Result<ChainRegistry<ChainProvider>, AppError> {
+    let mut providers = Vec::with_capacity(chains.len());
     for chain in chains.iter() {
         let chain_provider = build_chain_provider(chain).await?;
-        providers.insert(chain_provider.chain_id(), chain_provider);
+        providers.push((chain_provider.chain_id(), chain_provider));
     }
-    Ok(ChainRegistry::new(providers))
+    Ok(ChainRegistry::new(providers.into_iter().collect()))
 }

@@ -8,5 +8,5 @@ mod config;
 mod provider;
 mod schemes;
 
-pub use self::config::*;
-pub use self::provider::*;
+pub(crate) use self::config::*;
+pub(crate) use self::provider::*;

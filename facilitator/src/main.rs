@@ -16,29 +16,32 @@ mod routes;
 mod signers;
 mod telemetry;
 
+use std::io::Write;
+
 use clap::Parser;
 use commands::{Cli, Commands};
-use error::Error;
+use error::AppError;
 
 #[tokio::main]
-#[allow(clippy::print_stderr)]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
 
-    let result: Result<(), Error> = match cli.command {
+    let result: Result<(), AppError> = match cli.command {
         Commands::Init { output, force } => commands::init::run(&output, force),
         Commands::Serve { config } => commands::serve::run(&config).await,
     };
 
     if let Err(ref e) = result {
-        eprint!("Error: {e}");
-        // Walk the source chain so structured causes are not lost.
+        let stderr = std::io::stderr();
+        let mut handle = stderr.lock();
+        write!(handle, "Error: {e}").ok();
         let mut source = std::error::Error::source(e);
         while let Some(cause) = source {
-            eprint!(": {cause}");
+            write!(handle, ": {cause}").ok();
             source = std::error::Error::source(cause);
         }
-        eprintln!();
-        std::process::exit(1);
+        writeln!(handle).ok();
+        return std::process::ExitCode::FAILURE;
     }
+    std::process::ExitCode::SUCCESS
 }

@@ -34,29 +34,32 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 /// Always initialises structured console logging. When the `telemetry` feature
 /// is active and OTLP env vars are set, also registers `OpenTelemetry` exporters.
 #[derive(Debug, Default)]
-pub struct Telemetry {
+pub(crate) struct Telemetry {
+    /// Service name for `OTel` resource identification.
     name: Option<String>,
+    /// Service version for `OTel` resource identification.
     version: Option<String>,
+    /// Log level filter fallback when `RUST_LOG` is unset.
     log_level: Option<String>,
 }
 
 impl Telemetry {
     /// Creates a new, empty [`Telemetry`] instance.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Sets the service name (used for `OTel` resource identification).
     #[must_use]
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+    pub(crate) fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self
     }
 
     /// Sets the service version (used for `OTel` resource identification).
     #[must_use]
-    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+    pub(crate) fn with_version(mut self, version: impl Into<String>) -> Self {
         self.version = Some(version.into());
         self
     }
@@ -66,7 +69,7 @@ impl Telemetry {
     /// Accepts any valid [`EnvFilter`] directive string (e.g. `"debug"`,
     /// `"facilitator=debug,r402=trace"`).
     #[must_use]
-    pub fn with_log_level(mut self, level: impl Into<String>) -> Self {
+    pub(crate) fn with_log_level(mut self, level: impl Into<String>) -> Self {
         self.log_level = Some(level.into());
         self
     }
@@ -74,7 +77,7 @@ impl Telemetry {
     /// Initialises the tracing subscriber and optional `OTel` exporters.
     ///
     /// Returns a [`TelemetryGuard`] that flushes exporters on drop.
-    pub fn register(self) -> TelemetryGuard {
+    pub(crate) fn register(self) -> TelemetryGuard {
         let fallback = self.log_level.as_deref().unwrap_or("info");
         let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| fallback.into());
 
@@ -185,13 +188,17 @@ fn detect_protocol() -> Option<OtlpProtocol> {
     })
 }
 
+/// OTLP transport protocol.
 #[cfg(feature = "telemetry")]
 #[derive(Debug, Clone, Copy)]
 enum OtlpProtocol {
+    /// HTTP/protobuf transport.
     Http,
+    /// gRPC transport.
     Grpc,
 }
 
+/// Build an OTLP trace exporter and provider.
 #[cfg(feature = "telemetry")]
 fn build_tracer(protocol: OtlpProtocol, resource: Resource) -> Option<SdkTracerProvider> {
     let exporter = match protocol {
@@ -211,6 +218,7 @@ fn build_tracer(protocol: OtlpProtocol, resource: Resource) -> Option<SdkTracerP
     )
 }
 
+/// Build an OTLP metrics exporter and provider.
 #[cfg(feature = "telemetry")]
 fn build_meter(protocol: OtlpProtocol, resource: Resource) -> Option<SdkMeterProvider> {
     let exporter = match protocol {
@@ -240,7 +248,9 @@ fn build_meter(protocol: OtlpProtocol, resource: Resource) -> Option<SdkMeterPro
 #[cfg(feature = "telemetry")]
 #[derive(Debug)]
 struct OtelGuard {
+    /// Active trace provider, shut down on drop.
     tracer_provider: Option<SdkTracerProvider>,
+    /// Active meter provider, shut down on drop.
     meter_provider: Option<SdkMeterProvider>,
 }
 
@@ -265,7 +275,8 @@ impl Drop for OtelGuard {
 /// Also provides [`http_trace_layer`](TelemetryGuard::http_trace_layer) for
 /// Axum middleware setup.
 #[derive(Debug)]
-pub struct TelemetryGuard {
+pub(crate) struct TelemetryGuard {
+    /// Keeps `OTel` providers alive; flushed on drop.
     #[cfg(feature = "telemetry")]
     _otel: Option<OtelGuard>,
 }
@@ -273,10 +284,7 @@ pub struct TelemetryGuard {
 impl TelemetryGuard {
     /// Creates an HTTP tracing middleware layer for Axum.
     #[must_use]
-    #[allow(clippy::unused_self)]
-    pub fn http_trace_layer(
-        &self,
-    ) -> TraceLayer<
+    pub(crate) fn http_trace_layer() -> TraceLayer<
         tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>,
         HttpMakeSpan,
         tower_http::trace::DefaultOnRequest,
@@ -290,7 +298,7 @@ impl TelemetryGuard {
 
 /// Custom span maker for HTTP requests.
 #[derive(Clone, Copy, Debug)]
-pub struct HttpMakeSpan;
+pub(crate) struct HttpMakeSpan;
 
 impl<A> MakeSpan<A> for HttpMakeSpan {
     fn make_span(&mut self, request: &Request<A>) -> Span {
@@ -309,7 +317,7 @@ impl<A> MakeSpan<A> for HttpMakeSpan {
 
 /// Custom response handler for HTTP tracing.
 #[derive(Clone, Copy, Debug)]
-pub struct HttpOnResponse;
+pub(crate) struct HttpOnResponse;
 
 impl<A> OnResponse<A> for HttpOnResponse {
     fn on_response(self, response: &Response<A>, latency: Duration, span: &Span) {

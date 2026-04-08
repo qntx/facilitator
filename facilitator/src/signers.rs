@@ -13,14 +13,27 @@
 
 use std::collections::BTreeMap;
 
-use crate::error::Error;
+use crate::error::AppError;
 
 /// Resolve an environment-variable reference (`$VAR` or `${VAR}`), returning
 /// the literal string unchanged if it does not match either pattern.
-fn resolve_env(value: &str) -> Result<String, Error> {
+fn resolve_env(value: &str) -> Result<String, AppError> {
+    resolve_env_impl(value, |name| std::env::var(name).ok())
+}
+
+/// Inner implementation parameterised over the lookup function so that tests
+/// can supply a mock without touching real environment variables.
+fn resolve_env_impl(
+    value: &str,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<String, AppError> {
     // ${VAR} syntax — safe pattern-based extraction without byte indexing.
     if let Some(var_name) = value.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
-        return lookup_env(var_name, value);
+        return lookup(var_name).ok_or_else(|| {
+            AppError::signer(format!(
+                "env var '{var_name}' not found (referenced as '{value}')"
+            ))
+        });
     }
     // $VAR syntax — only valid when the remainder is a well-formed identifier.
     if let Some(var_name) = value.strip_prefix('$')
@@ -29,26 +42,19 @@ fn resolve_env(value: &str) -> Result<String, Error> {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_')
     {
-        return lookup_env(var_name, value);
+        return lookup(var_name).ok_or_else(|| {
+            AppError::signer(format!(
+                "env var '{var_name}' not found (referenced as '{value}')"
+            ))
+        });
     }
     // Literal value — no env-var reference detected.
     Ok(value.to_owned())
 }
 
-/// Look up an environment variable by name, returning a contextual error on
-/// failure that includes both the resolved variable name and the original
-/// reference string from the config file.
-fn lookup_env(var_name: &str, original: &str) -> Result<String, Error> {
-    std::env::var(var_name).map_err(|_| {
-        Error::signer(format!(
-            "env var '{var_name}' not found (referenced as '{original}')"
-        ))
-    })
-}
-
 /// Resolve a signer value: if it is a string, resolve env vars; if it is an
 /// array, resolve each element.
-fn resolve_signer_value(val: &toml::Value) -> Result<toml::Value, Error> {
+fn resolve_signer_value(val: &toml::Value) -> Result<toml::Value, AppError> {
     match val {
         toml::Value::String(s) => Ok(toml::Value::String(resolve_env(s)?)),
         toml::Value::Array(arr) => {
@@ -77,7 +83,7 @@ fn resolve_signer_value(val: &toml::Value) -> Result<toml::Value, Error> {
 /// # Errors
 ///
 /// Returns an error if environment variable resolution fails.
-pub fn preprocess_signers(doc: &mut BTreeMap<String, toml::Value>) -> Result<(), Error> {
+pub(crate) fn preprocess_signers(doc: &mut BTreeMap<String, toml::Value>) -> Result<(), AppError> {
     let signers_table = doc.remove("signers");
 
     let mut evm_signers: Option<toml::Value> = None;
@@ -95,81 +101,106 @@ pub fn preprocess_signers(doc: &mut BTreeMap<String, toml::Value>) -> Result<(),
     // Inject global signers into chain entries that don't have their own
     if let Some(toml::Value::Table(chains)) = doc.get_mut("chains") {
         for (chain_id, chain_val) in chains.iter_mut() {
-            if let toml::Value::Table(chain_table) = chain_val {
-                if chain_id.starts_with("eip155:") {
-                    if !chain_table.contains_key("signers")
-                        && let Some(ref signers_val) = evm_signers
-                    {
-                        chain_table.insert("signers".to_owned(), signers_val.clone());
-                    }
-                } else if chain_id.starts_with("solana:")
-                    && !chain_table.contains_key("signer")
-                    && let Some(ref signer_val) = solana_signer
-                {
-                    chain_table.insert("signer".to_owned(), signer_val.clone());
-                }
-            }
+            let toml::Value::Table(chain_table) = chain_val else {
+                continue;
+            };
+            inject_chain_signer(
+                chain_id,
+                chain_table,
+                evm_signers.as_ref(),
+                solana_signer.as_ref(),
+            );
         }
     }
 
     Ok(())
 }
 
+/// Inject a global signer into a single chain table when no per-chain override
+/// is present.
+fn inject_chain_signer(
+    chain_id: &str,
+    table: &mut toml::map::Map<String, toml::Value>,
+    evm_signers: Option<&toml::Value>,
+    solana_signer: Option<&toml::Value>,
+) {
+    if chain_id.starts_with("eip155:") && !table.contains_key("signers") {
+        if let Some(val) = evm_signers {
+            table.insert("signers".to_owned(), val.clone());
+        }
+    } else if chain_id.starts_with("solana:")
+        && !table.contains_key("signer")
+        && let Some(val) = solana_signer
+    {
+        table.insert("signer".to_owned(), val.clone());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Helper to set an env var in test context.
-    //
-    // SAFETY: only called from single-threaded test functions.
-    #[allow(unsafe_code, clippy::disallowed_methods)]
-    fn set_test_env(key: &str, value: &str) {
-        unsafe { std::env::set_var(key, value) };
-    }
-
-    #[allow(unsafe_code, clippy::disallowed_methods)]
-    fn remove_test_env(key: &str) {
-        unsafe { std::env::remove_var(key) };
+    /// Mock lookup: returns the value from a fixed map.
+    fn mock_lookup(map: &BTreeMap<String, String>) -> impl Fn(&str) -> Option<String> + '_ {
+        |key| map.get(key).cloned()
     }
 
     #[test]
     fn literal_value_unchanged() {
-        assert_eq!(resolve_env("0x1234abcd").unwrap(), "0x1234abcd");
-        assert_eq!(resolve_env("plain-text").unwrap(), "plain-text");
-        assert_eq!(resolve_env("").unwrap(), "");
+        let empty = BTreeMap::new();
+        assert_eq!(
+            resolve_env_impl("0x1234abcd", mock_lookup(&empty)).unwrap(),
+            "0x1234abcd"
+        );
+        assert_eq!(
+            resolve_env_impl("plain-text", mock_lookup(&empty)).unwrap(),
+            "plain-text"
+        );
+        assert_eq!(resolve_env_impl("", mock_lookup(&empty)).unwrap(), "");
     }
 
     #[test]
     fn bare_dollar_is_literal() {
-        assert_eq!(resolve_env("$").unwrap(), "$");
+        let empty = BTreeMap::new();
+        assert_eq!(resolve_env_impl("$", mock_lookup(&empty)).unwrap(), "$");
     }
 
     #[test]
     fn dollar_with_special_chars_is_literal() {
-        assert_eq!(resolve_env("$not-a-var!").unwrap(), "$not-a-var!");
-        assert_eq!(resolve_env("$has spaces").unwrap(), "$has spaces");
+        let empty = BTreeMap::new();
+        assert_eq!(
+            resolve_env_impl("$not-a-var!", mock_lookup(&empty)).unwrap(),
+            "$not-a-var!"
+        );
+        assert_eq!(
+            resolve_env_impl("$has spaces", mock_lookup(&empty)).unwrap(),
+            "$has spaces"
+        );
     }
 
     #[test]
     fn dollar_brace_syntax_resolves() {
-        set_test_env("_FACILITATOR_TEST_A", "resolved_a");
-        let result = resolve_env("${_FACILITATOR_TEST_A}");
-        remove_test_env("_FACILITATOR_TEST_A");
-        assert_eq!(result.unwrap(), "resolved_a");
+        let env = BTreeMap::from([("MY_VAR".to_owned(), "resolved_a".to_owned())]);
+        assert_eq!(
+            resolve_env_impl("${MY_VAR}", mock_lookup(&env)).unwrap(),
+            "resolved_a"
+        );
     }
 
     #[test]
     fn dollar_syntax_resolves() {
-        set_test_env("_FACILITATOR_TEST_B", "resolved_b");
-        let result = resolve_env("$_FACILITATOR_TEST_B");
-        remove_test_env("_FACILITATOR_TEST_B");
-        assert_eq!(result.unwrap(), "resolved_b");
+        let env = BTreeMap::from([("MY_VAR".to_owned(), "resolved_b".to_owned())]);
+        assert_eq!(
+            resolve_env_impl("$MY_VAR", mock_lookup(&env)).unwrap(),
+            "resolved_b"
+        );
     }
 
     #[test]
     fn missing_env_var_returns_error() {
-        assert!(resolve_env("${_FACILITATOR_NONEXISTENT}").is_err());
-        assert!(resolve_env("$_FACILITATOR_NONEXISTENT").is_err());
+        let empty = BTreeMap::new();
+        assert!(resolve_env_impl("${NONEXISTENT}", mock_lookup(&empty)).is_err());
+        assert!(resolve_env_impl("$NONEXISTENT", mock_lookup(&empty)).is_err());
     }
 
     #[test]
@@ -188,8 +219,8 @@ mod tests {
         let resolved = resolve_signer_value(&val).unwrap();
         let arr = resolved.as_array().unwrap();
         assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0].as_str(), Some("k1"));
-        assert_eq!(arr[1].as_str(), Some("k2"));
+        assert_eq!(arr.first().and_then(toml::Value::as_str), Some("k1"));
+        assert_eq!(arr.get(1).and_then(toml::Value::as_str), Some("k2"));
     }
 
     #[test]
@@ -214,11 +245,20 @@ rpc = [{ http = "https://example.com" }]
         // [signers] section must be removed after preprocessing
         assert!(!doc.contains_key("signers"));
 
-        let chains = doc["chains"].as_table().unwrap();
-        let chain = chains["eip155:84532"].as_table().unwrap();
-        let signers = chain["signers"].as_array().unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("eip155:84532")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let signers = chain
+            .get("signers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
         assert_eq!(signers.len(), 2);
-        assert_eq!(signers[0].as_str(), Some("0xkey1"));
+        assert_eq!(
+            signers.first().and_then(toml::Value::as_str),
+            Some("0xkey1")
+        );
     }
 
     #[test]
@@ -234,11 +274,20 @@ signers = ["0xlocal"]
         let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
         preprocess_signers(&mut doc).unwrap();
 
-        let chains = doc["chains"].as_table().unwrap();
-        let chain = chains["eip155:84532"].as_table().unwrap();
-        let signers = chain["signers"].as_array().unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("eip155:84532")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let signers = chain
+            .get("signers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
         assert_eq!(signers.len(), 1);
-        assert_eq!(signers[0].as_str(), Some("0xlocal"));
+        assert_eq!(
+            signers.first().and_then(toml::Value::as_str),
+            Some("0xlocal")
+        );
     }
 
     #[test]
@@ -253,11 +302,15 @@ rpc = "https://api.mainnet-beta.solana.com"
         let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
         preprocess_signers(&mut doc).unwrap();
 
-        let chains = doc["chains"].as_table().unwrap();
-        let chain = chains["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
-            .as_table()
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")
+            .and_then(toml::Value::as_table)
             .unwrap();
-        assert_eq!(chain["signer"].as_str(), Some("base58key"));
+        assert_eq!(
+            chain.get("signer").and_then(toml::Value::as_str),
+            Some("base58key")
+        );
     }
 
     #[test]

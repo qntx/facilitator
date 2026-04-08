@@ -11,7 +11,7 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 /// `source` error that preserves the original cause for `Error::source()`
 /// chain traversal and structured logging.
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum AppError {
     /// Configuration file could not be resolved, read, or parsed.
     #[error("config: {context}")]
     Config {
@@ -53,7 +53,7 @@ pub enum Error {
     },
 }
 
-impl Error {
+impl AppError {
     /// Create a config error with context only (no underlying cause).
     pub(crate) fn config(context: impl Into<String>) -> Self {
         Self::Config {

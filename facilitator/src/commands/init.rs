@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::error::Error;
+use crate::error::AppError;
 
 /// Execute the `init` command.
 ///
@@ -14,10 +14,9 @@ use crate::error::Error;
 ///
 /// Returns an error if the file already exists (without `--force`) or if
 /// writing fails.
-#[allow(clippy::print_stderr)]
-pub fn run(output: &Path, force: bool) -> Result<(), Error> {
+pub(crate) fn run(output: &Path, force: bool) -> Result<(), AppError> {
     if output.exists() && !force {
-        return Err(Error::config(format!(
+        return Err(AppError::config(format!(
             "'{}' already exists, use --force to overwrite",
             output.display()
         )));
@@ -25,9 +24,15 @@ pub fn run(output: &Path, force: bool) -> Result<(), Error> {
 
     let content = generate_default_config();
     fs::write(output, content)
-        .map_err(|e| Error::config_with(format!("failed to write '{}'", output.display()), e))?;
+        .map_err(|e| AppError::config_with(format!("failed to write '{}'", output.display()), e))?;
 
-    eprintln!("Config file written to {}", output.display());
+    let stderr = std::io::stderr();
+    let mut handle = stderr.lock();
+    std::io::Write::write_fmt(
+        &mut handle,
+        format_args!("Config file written to {}\n", output.display()),
+    )
+    .ok();
     Ok(())
 }
 
