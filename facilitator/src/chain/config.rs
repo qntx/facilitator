@@ -147,7 +147,7 @@ pub(crate) struct ChainsConfig(Vec<ChainConfig>);
 impl ChainsConfig {
     /// Returns the number of configured chains.
     #[must_use]
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.0.len()
     }
 

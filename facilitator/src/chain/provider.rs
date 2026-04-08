@@ -75,7 +75,7 @@ fn build_eip155_provider(
     use alloy_signer_local::PrivateKeySigner;
     use url::Url;
 
-    let signers: Vec<PrivateKeySigner> = config
+    let mut signers = config
         .inner
         .signers
         .iter()
@@ -83,21 +83,17 @@ fn build_eip155_provider(
             k.parse()
                 .map_err(|e| AppError::chain(format!("failed to parse EVM signer key: {e}")))
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<Vec<PrivateKeySigner>, _>>()?
+        .into_iter();
 
-    if signers.is_empty() {
-        return Err(AppError::chain(format!(
+    let first = signers.next().ok_or_else(|| {
+        AppError::chain(format!(
             "no signers configured for EVM chain {}",
             config.chain_id()
-        )));
-    }
-
-    let mut iter = signers.into_iter();
-    let first = iter.next().ok_or_else(|| {
-        AppError::chain(format!("no signers for EVM chain {}", config.chain_id()))
+        ))
     })?;
     let mut wallet = EthereumWallet::from(first);
-    for s in iter {
+    for s in signers {
         wallet.register_signer(s);
     }
 
@@ -105,7 +101,17 @@ fn build_eip155_provider(
         .inner
         .rpc
         .iter()
-        .filter_map(|ep| Url::parse(&ep.http).ok().map(|url| (url, ep.rate_limit)))
+        .filter_map(|ep| match Url::parse(&ep.http) {
+            Ok(url) => Some((url, ep.rate_limit)),
+            Err(e) => {
+                tracing::warn!(
+                    rpc_url = %ep.http,
+                    error = %e,
+                    "Skipping invalid RPC URL"
+                );
+                None
+            }
+        })
         .collect();
 
     let provider = eip155::Eip155ChainProvider::new(
