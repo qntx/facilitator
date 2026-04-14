@@ -29,7 +29,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 solana-keypair = "3.1.2"
 thiserror = "2.0.18"
-tokio = { version = "1.51.0", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1.51.1", features = ["rt-multi-thread", "macros", "signal"] }
 toml = "1.1.2"
 tower-http = { version = "0.6.8", features = ["trace", "cors", "timeout"] }
 tracing = "0.1.44"
