@@ -15,7 +15,7 @@ alloy-network = "1.8.3"
 alloy-signer-local = "1.8.3"
 axum = "0.8.8"
 bs58 = { version = "0.5.1", features = ["alloc"] }
-clap = { version = "4.6.0", features = ["derive", "env"] }
+clap = { version = "4.6.1", features = ["derive", "env"] }
 dotenvy = "0.15.7"
 opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["metrics", "grpc-tonic"] }
