@@ -1,0 +1,97 @@
+# x402 Facilitator — Justfile
+#
+# Thin wrapper around fctl. For the full CLI, run: fctl help
+# Usage: just help
+
+# Show this help.
+help:
+    @just --list
+    @echo ""
+    @echo "  Full CLI: fctl help"
+    @echo ""
+
+# First-time deployment (install Docker, pull images, start).
+setup:
+    sudo bash setup.sh
+
+# Pull latest images, recreate all containers, and run a health check.
+deploy:
+    if command -v fctl >/dev/null 2>&1; then fctl deploy; else bash fctl deploy; fi
+
+# Smart reload (auto-detect which config changed).
+reload:
+    if command -v fctl >/dev/null 2>&1; then fctl reload; else bash fctl reload; fi
+
+# Pull latest Docker images and perform a rolling restart.
+update:
+    if command -v fctl >/dev/null 2>&1; then fctl update; else bash fctl update; fi
+
+# Start all services.
+up:
+    docker compose up -d
+
+# Stop all services.
+down:
+    docker compose down
+
+# Restart all services.
+restart:
+    docker compose restart
+
+# Show the service dashboard (status, health, versions).
+status:
+    if command -v fctl >/dev/null 2>&1; then fctl status; else bash fctl status; fi
+
+# Run full diagnostics.
+doctor:
+    if command -v fctl >/dev/null 2>&1; then fctl doctor; else bash fctl doctor; fi
+
+# Follow facilitator logs.
+logs:
+    if command -v fctl >/dev/null 2>&1; then fctl logs facilitator; else bash fctl logs facilitator; fi
+
+# Follow Caddy logs.
+logs-caddy:
+    if command -v fctl >/dev/null 2>&1; then fctl logs caddy; else bash fctl logs caddy; fi
+
+# Follow Watchtower logs.
+logs-watchtower:
+    if command -v fctl >/dev/null 2>&1; then fctl logs watchtower; else bash fctl logs watchtower; fi
+
+# Follow all service logs.
+logs-all:
+    if command -v fctl >/dev/null 2>&1; then fctl logs all; else bash fctl logs all; fi
+
+# Perform a quick health check.
+health:
+    curl -sf http://localhost:8080/health > /dev/null \
+        && echo "✓ facilitator healthy" \
+        || echo "✗ facilitator unhealthy"
+
+# Show supported chains and schemes.
+supported:
+    curl -sf http://localhost:8080/supported | head -c 4096 && echo
+
+# Edit config.toml (auto-backup and reload).
+edit-config:
+    if command -v fctl >/dev/null 2>&1; then fctl edit config; else bash fctl edit config; fi
+
+# Edit the Caddyfile (auto-backup and reload).
+edit-caddy:
+    if command -v fctl >/dev/null 2>&1; then fctl edit caddy; else bash fctl edit caddy; fi
+
+# Back up all configuration files.
+backup:
+    if command -v fctl >/dev/null 2>&1; then fctl backup; else bash fctl backup; fi
+
+# Remove dangling Docker images to free disk space.
+prune:
+    docker image prune -f
+
+# Stop all services and remove volumes.
+reset:
+    if command -v fctl >/dev/null 2>&1; then fctl reset; else bash fctl reset; fi
+
+# Force-remove all x402 containers, volumes, and networks.
+purge:
+    if command -v fctl >/dev/null 2>&1; then fctl purge; else bash fctl purge; fi
