@@ -19,7 +19,7 @@ clap = { version = "4.6.0", features = ["derive", "env"] }
 dotenvy = "0.15.7"
 opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["metrics", "grpc-tonic"] }
-opentelemetry-semantic-conventions = { version = "0.31.0", features = ["semconv_experimental"] }
+opentelemetry-semantic-conventions = { version = "0.32.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = "0.31.0"
 r402 = { version = "0.13.0" }
 r402-evm = { version = "0.13.0", features = ["facilitator"] }
