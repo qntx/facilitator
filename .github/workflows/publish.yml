@@ -1,0 +1,13 @@
+name: Publish to crates.io
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  publish:
+    uses: qntx/workflows/.github/workflows/publish-crates.yml@main
+    with:
+      packages: "facilitator"
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
