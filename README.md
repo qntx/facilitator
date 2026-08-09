@@ -13,7 +13,7 @@
 [docker-badge]: https://img.shields.io/badge/ghcr.io-facilitator-blue
 [docker-url]: https://github.com/qntx/facilitator/pkgs/container/facilitator
 [license-badge]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg
-[license-url]: LICENSE-MIT
+[license-url]: #license
 [rust-badge]: https://img.shields.io/badge/rust-edition%202024-orange.svg
 [rust-url]: https://doc.rust-lang.org/edition-guide/
 
@@ -163,12 +163,14 @@ See [`SECURITY.md`](SECURITY.md) for disclaimers, supported versions, and vulner
 
 ## License
 
-Licensed under the [Functional Source License, Version 1.1, Apache-2.0 Future License](LICENSE.md) (FSL-1.1-ALv2).
+Licensed under either of:
 
-- You can use, modify, and redistribute for any purpose **except** competing use.
-- Each version automatically converts to the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) two years after release.
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT License ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project shall be licensed as above, without any additional terms or conditions.
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project shall be dual-licensed as above, without any additional terms or conditions.
 
 ---
 
