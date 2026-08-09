@@ -6,8 +6,8 @@
 [![License][license-badge]][license-url]
 [![Rust][rust-badge]][rust-url]
 
-[ci-badge]: https://github.com/qntx/facilitator/actions/workflows/rust.yml/badge.svg
-[ci-url]: https://github.com/qntx/facilitator/actions/workflows/rust.yml
+[ci-badge]: https://github.com/qntx/facilitator/actions/workflows/ci.yml/badge.svg
+[ci-url]: https://github.com/qntx/facilitator/actions/workflows/ci.yml
 [crate-badge]: https://img.shields.io/crates/v/facilitator.svg
 [crate-url]: https://crates.io/crates/facilitator
 [docker-badge]: https://img.shields.io/badge/ghcr.io-facilitator-blue
