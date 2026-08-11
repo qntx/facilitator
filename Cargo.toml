@@ -21,7 +21,7 @@ opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["metrics", "grpc-tonic"] }
 opentelemetry-semantic-conventions = { version = "0.32.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = "0.31.0"
-r402 = { version = "0.13.0" }
+r402 = { version = "0.14.0" }
 r402-evm = { version = "0.13.0", features = ["facilitator"] }
 r402-svm = { version = "0.13.0", features = ["facilitator"] }
 rustls = { version = "0.23.38", features = ["ring"] }
