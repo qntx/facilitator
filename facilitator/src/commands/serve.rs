@@ -63,7 +63,12 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
 
 /// Construct chain handles and register compiled schemes.
 #[cfg_attr(
-    not(feature = "chain-eip155"),
+    not(any(
+        feature = "chain-eip155",
+        feature = "chain-hedera",
+        feature = "chain-algorand",
+        feature = "chain-aptos"
+    )),
     allow(unused_variables, reason = "no compiled chain families in this build")
 )]
 fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppError> {
@@ -71,14 +76,57 @@ fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppE
 
     #[cfg(feature = "chain-eip155")]
     {
-        use crate::chain::eip155::build_eip155_handle;
         use r402_evm::Eip155Exact;
+
+        use crate::chain::eip155::build_eip155_handle;
 
         for chain in config.chains().eip155() {
             let handle = build_eip155_handle(chain)?;
             registry
                 .register(&Eip155Exact, &handle, None)
                 .map_err(|e| AppError::chain(format!("failed to register eip155 exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-hedera")]
+    {
+        use r402_hedera::HederaExact;
+
+        use crate::chain::hedera::build_hedera_provider;
+
+        for chain in config.chains().hedera() {
+            let provider = build_hedera_provider(chain)?;
+            registry
+                .register(&HederaExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register hedera exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-algorand")]
+    {
+        use r402_algorand::AlgorandExact;
+
+        use crate::chain::algorand::build_algorand_provider;
+
+        for chain in config.chains().algorand() {
+            let provider = build_algorand_provider(chain)?;
+            registry
+                .register(&AlgorandExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register algorand exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-aptos")]
+    {
+        use r402_aptos::AptosExact;
+
+        use crate::chain::aptos::build_aptos_provider;
+
+        for chain in config.chains().aptos() {
+            let provider = build_aptos_provider(chain)?;
+            registry
+                .register(&AptosExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register aptos exact: {e}")))?;
         }
     }
 

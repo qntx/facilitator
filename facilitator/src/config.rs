@@ -8,12 +8,17 @@ use std::str::FromStr;
 use r402_core::chain::ChainId;
 use serde::Deserialize;
 
-use crate::chain::family_feature;
-use crate::error::AppError;
-use crate::signers;
-
+#[cfg(feature = "chain-algorand")]
+use crate::chain::algorand::AlgorandChainConfig;
+#[cfg(feature = "chain-aptos")]
+use crate::chain::aptos::AptosChainConfig;
 #[cfg(feature = "chain-eip155")]
 use crate::chain::eip155::Eip155ChainConfig;
+use crate::chain::family_feature;
+#[cfg(feature = "chain-hedera")]
+use crate::chain::hedera::HederaChainConfig;
+use crate::error::AppError;
+use crate::signers;
 
 /// Server configuration combining host/port and chain configs.
 #[derive(Debug, Clone)]
@@ -34,6 +39,15 @@ pub(crate) struct ChainsConfig {
     /// EIP-155 chains, in TOML key order.
     #[cfg(feature = "chain-eip155")]
     eip155: Vec<Eip155ChainConfig>,
+    /// Hedera chains, in TOML key order.
+    #[cfg(feature = "chain-hedera")]
+    hedera: Vec<HederaChainConfig>,
+    /// Algorand chains, in TOML key order.
+    #[cfg(feature = "chain-algorand")]
+    algorand: Vec<AlgorandChainConfig>,
+    /// Aptos chains, in TOML key order.
+    #[cfg(feature = "chain-aptos")]
+    aptos: Vec<AptosChainConfig>,
 }
 
 impl ChainsConfig {
@@ -42,6 +56,27 @@ impl ChainsConfig {
     #[must_use]
     pub(crate) fn eip155(&self) -> &[Eip155ChainConfig] {
         &self.eip155
+    }
+
+    /// Hedera chain configs.
+    #[cfg(feature = "chain-hedera")]
+    #[must_use]
+    pub(crate) fn hedera(&self) -> &[HederaChainConfig] {
+        &self.hedera
+    }
+
+    /// Algorand chain configs.
+    #[cfg(feature = "chain-algorand")]
+    #[must_use]
+    pub(crate) fn algorand(&self) -> &[AlgorandChainConfig] {
+        &self.algorand
+    }
+
+    /// Aptos chain configs.
+    #[cfg(feature = "chain-aptos")]
+    #[must_use]
+    pub(crate) fn aptos(&self) -> &[AptosChainConfig] {
+        &self.aptos
     }
 }
 
@@ -164,6 +199,12 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
 
     #[cfg(feature = "chain-eip155")]
     let mut eip155 = Vec::new();
+    #[cfg(feature = "chain-hedera")]
+    let mut hedera = Vec::new();
+    #[cfg(feature = "chain-algorand")]
+    let mut algorand = Vec::new();
+    #[cfg(feature = "chain-aptos")]
+    let mut aptos = Vec::new();
 
     for (key, value) in raw {
         let chain_id = ChainId::from_str(&key)
@@ -171,6 +212,12 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
         match chain_id.namespace() {
             #[cfg(feature = "chain-eip155")]
             "eip155" => eip155.push(Eip155ChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-hedera")]
+            "hedera" => hedera.push(HederaChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-algorand")]
+            "algorand" => algorand.push(AlgorandChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-aptos")]
+            "aptos" => aptos.push(AptosChainConfig::from_toml(&chain_id, value)?),
             other => {
                 if let Some(feature) = family_feature(other) {
                     return Err(AppError::config(format!(
@@ -187,6 +234,12 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
     Ok(ChainsConfig {
         #[cfg(feature = "chain-eip155")]
         eip155,
+        #[cfg(feature = "chain-hedera")]
+        hedera,
+        #[cfg(feature = "chain-algorand")]
+        algorand,
+        #[cfg(feature = "chain-aptos")]
+        aptos,
     })
 }
 
@@ -263,6 +316,88 @@ rpc = [{ http = "https://sepolia.base.org" }]
             chain.inner.signers.as_slice(),
             &["0xabc".to_owned()],
             "injected signer"
+        );
+    }
+
+    #[cfg(not(feature = "chain-hedera"))]
+    #[test]
+    fn parse_rejects_compiled_out_hedera() {
+        let raw = r#"
+[chains."hedera:testnet"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'hedera'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-hedera")]
+    #[test]
+    fn parse_hedera_minimal() {
+        let raw = r#"
+[signers]
+hedera = [{ account_id = "0.0.1234", private_key = "secret" }]
+[chains."hedera:testnet"]
+alias_policy = "allow"
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().hedera().first().expect("one hedera chain");
+        assert_eq!(
+            chain
+                .inner
+                .fee_payers
+                .first()
+                .map(|p| p.account_id.as_str()),
+            Some("0.0.1234"),
+            "injected fee payer"
+        );
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "aliasPolicy": "allow" })),
+            "scheme JSON"
+        );
+    }
+
+    #[cfg(feature = "chain-algorand")]
+    #[test]
+    fn parse_algorand_minimal() {
+        let raw = r#"
+[signers]
+algorand = ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+wait_rounds = 8
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config
+            .chains()
+            .algorand()
+            .first()
+            .expect("one algorand chain");
+        assert_eq!(chain.inner.signers.len(), 1, "injected signer");
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "waitRounds": 8 })),
+            "scheme JSON"
+        );
+    }
+
+    #[cfg(feature = "chain-aptos")]
+    #[test]
+    fn parse_aptos_minimal() {
+        let raw = r#"
+[signers]
+aptos = ["0000000000000000000000000000000000000000000000000000000000000001"]
+[chains."aptos:2"]
+sponsor_transactions = false
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().aptos().first().expect("one aptos chain");
+        assert_eq!(chain.inner.fee_payers.len(), 1, "injected fee payer");
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "sponsorTransactions": false })),
+            "scheme JSON"
         );
     }
 

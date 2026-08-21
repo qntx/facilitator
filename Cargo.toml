@@ -22,8 +22,11 @@ opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["metrics", "grpc-tonic"] }
 opentelemetry-semantic-conventions = { version = "0.32.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = "0.31.0"
+r402-algorand = { version = "0.17.1", default-features = false, features = ["facilitator"] }
+r402-aptos = { version = "0.17.1", default-features = false, features = ["facilitator"] }
 r402-core = "0.17.1"
 r402-evm = { version = "0.17.1", default-features = false, features = ["facilitator"] }
+r402-hedera = { version = "0.17.1", default-features = false, features = ["facilitator"] }
 rustls = { version = "0.23.38", features = ["ring"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"

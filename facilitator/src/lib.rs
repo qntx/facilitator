@@ -22,7 +22,6 @@ use std::io::Write;
 use clap::Parser;
 use commands::{Cli, Commands};
 use error::AppError;
-
 pub use routes::{FacilitatorState, routes};
 
 /// CLI entry: `init` or `serve`.

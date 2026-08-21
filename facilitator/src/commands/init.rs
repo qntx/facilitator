@@ -70,6 +70,24 @@ log_level = "info"
 "#,
     );
 
+    #[cfg(feature = "chain-hedera")]
+    config.push_str(
+        r#"hedera = [{ account_id = "0.0.x", private_key = "$HEDERA_PRIVATE_KEY" }]
+"#,
+    );
+
+    #[cfg(feature = "chain-algorand")]
+    config.push_str(
+        r#"algorand = ["$ALGORAND_SIGNER_SEED"]     # standard-base64 32-byte seed or 64-byte seed||pubkey
+"#,
+    );
+
+    #[cfg(feature = "chain-aptos")]
+    config.push_str(
+        r#"aptos = ["$APTOS_FEE_PAYER_PRIVATE_KEY"] # 32-byte ed25519 hex
+"#,
+    );
+
     #[cfg(feature = "chain-eip155")]
     config.push_str(
         r#"
@@ -82,6 +100,42 @@ log_level = "info"
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
 receipt_timeout_secs = 20
+"#,
+    );
+
+    #[cfg(feature = "chain-hedera")]
+    config.push_str(
+        r#"
+# Hedera
+#
+# Key format: "hedera:mainnet" | "hedera:testnet"
+# No `rpc`; optional mirror_url / node_url. alias_policy = "reject" | "allow".
+
+[chains."hedera:testnet"]
+"#,
+    );
+
+    #[cfg(feature = "chain-algorand")]
+    config.push_str(
+        r#"
+# Algorand
+#
+# Key format: "algorand:<genesis-prefix>"
+# No `rpc`; optional algod_url / algod_token / wait_rounds.
+
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+"#,
+    );
+
+    #[cfg(feature = "chain-aptos")]
+    config.push_str(
+        r#"
+# Aptos
+#
+# Key format: "aptos:1" | "aptos:2"
+# rpc is an optional string URL. sponsor_transactions defaults true.
+
+[chains."aptos:2"]
 "#,
     );
 
@@ -118,5 +172,35 @@ mod tests {
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
         let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
         assert!(chains.contains_key("eip155:84532"), "base sepolia present");
+    }
+
+    #[cfg(feature = "chain-hedera")]
+    #[test]
+    fn generate_default_config_has_hedera_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("hedera:testnet"), "hedera testnet");
+    }
+
+    #[cfg(feature = "chain-algorand")]
+    #[test]
+    fn generate_default_config_has_algorand_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(
+            chains.contains_key("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"),
+            "algorand testnet"
+        );
+    }
+
+    #[cfg(feature = "chain-aptos")]
+    #[test]
+    fn generate_default_config_has_aptos_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("aptos:2"), "aptos testnet");
     }
 }

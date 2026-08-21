@@ -65,6 +65,45 @@ fn wrap_evm_signers(val: toml::Value) -> toml::Value {
     }
 }
 
+/// Wrap a lone table or string as a one-element array (Hedera rows, Algorand/Aptos secrets).
+fn wrap_as_array(val: toml::Value) -> toml::Value {
+    match val {
+        toml::Value::Array(_) => val,
+        other => toml::Value::Array(vec![other]),
+    }
+}
+
+/// Insert `value` under `field` when the chain table does not already set it.
+fn inject_field(
+    chain_table: &mut toml::map::Map<String, toml::Value>,
+    field: &str,
+    value: Option<&toml::Value>,
+) {
+    if chain_table.contains_key(field) {
+        return;
+    }
+    if let Some(val) = value {
+        chain_table.insert(field.to_owned(), val.clone());
+    }
+}
+
+/// Apply namespace-prefix injections into each `[chains.*]` table.
+fn inject_resolved_signers(
+    chains: &mut toml::map::Map<String, toml::Value>,
+    injections: &[(&str, &str, Option<&toml::Value>)],
+) {
+    for (chain_id, chain_val) in chains.iter_mut() {
+        let toml::Value::Table(chain_table) = chain_val else {
+            continue;
+        };
+        for &(prefix, field, value) in injections {
+            if chain_id.starts_with(prefix) {
+                inject_field(chain_table, field, value);
+            }
+        }
+    }
+}
+
 /// Pre-process raw TOML: extract `[signers]`, resolve env vars, inject into chains.
 ///
 /// # Errors
@@ -98,19 +137,18 @@ pub(crate) fn preprocess_signers_with(
     };
 
     let evm_signers = signers.get("evm").cloned().map(wrap_evm_signers);
+    let hedera = signers.get("hedera").cloned().map(wrap_as_array);
+    let algorand = signers.get("algorand").cloned().map(wrap_as_array);
+    let aptos = signers.get("aptos").cloned().map(wrap_as_array);
+    let injections = [
+        ("eip155:", "signers", evm_signers.as_ref()),
+        ("hedera:", "fee_payers", hedera.as_ref()),
+        ("algorand:", "signers", algorand.as_ref()),
+        ("aptos:", "fee_payers", aptos.as_ref()),
+    ];
 
     if let Some(toml::Value::Table(chains)) = doc.get_mut("chains") {
-        for (chain_id, chain_val) in chains.iter_mut() {
-            let toml::Value::Table(chain_table) = chain_val else {
-                continue;
-            };
-            if chain_id.starts_with("eip155:")
-                && !chain_table.contains_key("signers")
-                && let Some(val) = evm_signers.as_ref()
-            {
-                chain_table.insert("signers".to_owned(), val.clone());
-            }
-        }
+        inject_resolved_signers(chains, &injections);
     }
 
     Ok(())
@@ -324,6 +362,144 @@ signers = ["0xlocal"]
             signers.first().and_then(toml::Value::as_str),
             Some("0xlocal"),
             "per-chain wins"
+        );
+    }
+
+    #[test]
+    fn nested_hedera_table_var_injected() {
+        let toml_str = r#"
+[signers]
+hedera = [{ account_id = "0.0.1234", private_key = "$HEDERA_KEY" }]
+
+[chains."hedera:testnet"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let env = BTreeMap::from([("HEDERA_KEY".to_owned(), "302e-secret".to_owned())]);
+        preprocess_signers_with(&mut doc, mock_lookup(&env)).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("hedera:testnet")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let payers = chain
+            .get("fee_payers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
+        let key = payers
+            .first()
+            .and_then(toml::Value::as_table)
+            .and_then(|t| t.get("private_key"))
+            .and_then(toml::Value::as_str);
+        assert_eq!(key, Some("302e-secret"), "nested $VAR");
+        let account = payers
+            .first()
+            .and_then(toml::Value::as_table)
+            .and_then(|t| t.get("account_id"))
+            .and_then(toml::Value::as_str);
+        assert_eq!(account, Some("0.0.1234"), "account_id kept");
+    }
+
+    #[test]
+    fn hedera_per_chain_fee_payers_not_overridden() {
+        let toml_str = r#"
+[signers]
+hedera = [{ account_id = "0.0.1", private_key = "global" }]
+
+[chains."hedera:testnet"]
+fee_payers = [{ account_id = "0.0.2", private_key = "local" }]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        preprocess_signers(&mut doc).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("hedera:testnet")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let key = chain
+            .get("fee_payers")
+            .and_then(toml::Value::as_array)
+            .and_then(|a| a.first())
+            .and_then(toml::Value::as_table)
+            .and_then(|t| t.get("private_key"))
+            .and_then(toml::Value::as_str);
+        assert_eq!(key, Some("local"), "per-chain wins");
+    }
+
+    #[test]
+    fn algorand_base64_injected() {
+        let toml_str = r#"
+[signers]
+algorand = ["$ALGO_SEED"]
+
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let seed = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        let env = BTreeMap::from([("ALGO_SEED".to_owned(), seed.to_owned())]);
+        preprocess_signers_with(&mut doc, mock_lookup(&env)).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let signers = chain
+            .get("signers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
+        assert_eq!(
+            signers.first().and_then(toml::Value::as_str),
+            Some(seed),
+            "base64 $VAR"
+        );
+    }
+
+    #[test]
+    fn lone_algorand_string_wrapped_to_array() {
+        let toml_str = r#"
+[signers]
+algorand = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        preprocess_signers(&mut doc).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let signers = chain
+            .get("signers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
+        assert_eq!(signers.len(), 1, "wrapped");
+    }
+
+    #[test]
+    fn aptos_hex_injected() {
+        let toml_str = r#"
+[signers]
+aptos = ["$APTOS_KEY"]
+
+[chains."aptos:2"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let hex_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let env = BTreeMap::from([("APTOS_KEY".to_owned(), hex_key.to_owned())]);
+        preprocess_signers_with(&mut doc, mock_lookup(&env)).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("aptos:2")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let payers = chain
+            .get("fee_payers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
+        assert_eq!(
+            payers.first().and_then(toml::Value::as_str),
+            Some(hex_key),
+            "hex $VAR"
         );
     }
 

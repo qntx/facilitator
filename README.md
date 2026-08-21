@@ -131,6 +131,9 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Family | This build | Notes |
 | --- | --- | --- |
 | **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
+| **Hedera exact** | `chain-hedera` | `hedera:mainnet` / `hedera:testnet`; no `rpc` (optional `mirror_url` / `node_url`) |
+| **Algorand exact** | `chain-algorand` | standard-base64 seeds; optional `algod_url` / `algod_token` |
+| **Aptos exact** | `chain-aptos` | 32-byte ed25519 hex; optional string `rpc` |
 | **Solana (SVM)** | later PR | Not compiled in 1.0.0-pr1 default features |
 
 ## Feature Flags
@@ -138,6 +141,9 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Feature | Default | Description |
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
+| `chain-hedera` | | Hedera exact via [r402-hedera](https://crates.io/crates/r402-hedera) 0.17.1 |
+| `chain-algorand` | | Algorand exact via [r402-algorand](https://crates.io/crates/r402-algorand) 0.17.1 |
+| `chain-aptos` | | Aptos exact via [r402-aptos](https://crates.io/crates/r402-aptos) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
 
 ```bash
