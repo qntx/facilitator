@@ -4,8 +4,12 @@
 
 // Dev-dependencies are linked into the lib test target. With `chain-eip155`
 // they are used by GET /supported unit tests; without it, silence unused_crate_dependencies.
+#[cfg(all(test, not(feature = "metrics")))]
+use ::metrics as _;
 #[cfg(all(test, not(feature = "chain-eip155")))]
 use http_body_util as _;
+#[cfg(all(test, not(feature = "metrics")))]
+use metrics_util as _;
 #[cfg(all(test, not(feature = "chain-eip155")))]
 use tower as _;
 
@@ -13,6 +17,7 @@ mod chain;
 mod commands;
 mod config;
 mod error;
+mod metrics;
 mod routes;
 mod signers;
 mod telemetry;

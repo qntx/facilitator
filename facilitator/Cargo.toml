@@ -22,6 +22,12 @@ chain-eip155 = ["dep:r402-evm", "dep:alloy-network", "dep:alloy-signer-local", "
 chain-solana = ["dep:r402-solana", "dep:solana-keypair", "dep:bs58"]
 chain-near = ["dep:r402-near"]
 chain-xrpl = ["dep:r402-xrpl"]
+chain-hedera = ["dep:r402-hedera"]
+chain-algorand = ["dep:r402-algorand"]
+chain-aptos = ["dep:r402-aptos"]
+chain-keeta = ["dep:r402-keeta", "dep:base64"]
+chain-tvm = ["dep:r402-tvm"]
+chain-stellar = ["dep:r402-stellar"]
 # Registration-only: r402-evm always compiles upto / batch_settlement with `facilitator`.
 scheme-upto = ["chain-eip155"]
 scheme-batch-settlement = ["chain-eip155"]
@@ -38,7 +44,18 @@ telemetry = [
     "r402-solana?/telemetry",
     "r402-near?/telemetry",
     "r402-xrpl?/telemetry",
+    "r402-hedera?/telemetry",
+    "r402-algorand?/telemetry",
+    "r402-aptos?/telemetry",
+    "r402-keeta?/telemetry",
+    "r402-tvm?/telemetry",
+    "r402-stellar?/telemetry",
 ]
+# HTTP `facilitator_http_*` via the `metrics` facade. Enables r402-core/metrics
+# so SettlementCache emits `r402_settlement_cache_reserve_total`. Off by
+# default. No Prometheus scrape bind. Do not emit `r402_facilitator_*` from
+# this process — those names belong to r402-core.
+metrics = ["dep:metrics", "r402-core/metrics"]
 
 [dependencies]
 axum = { workspace = true }
@@ -60,19 +77,29 @@ opentelemetry_sdk = { workspace = true, optional = true }
 opentelemetry-otlp = { workspace = true, optional = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
+metrics = { workspace = true, optional = true }
 r402-evm = { workspace = true, optional = true }
 r402-solana = { workspace = true, optional = true }
 r402-near = { workspace = true, optional = true }
 r402-xrpl = { workspace = true, optional = true }
+r402-hedera = { workspace = true, optional = true }
+r402-algorand = { workspace = true, optional = true }
+r402-aptos = { workspace = true, optional = true }
+r402-keeta = { workspace = true, optional = true }
+r402-tvm = { workspace = true, optional = true }
+r402-stellar = { workspace = true, optional = true }
 alloy-network = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 solana-keypair = { workspace = true, optional = true }
 bs58 = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 
 [dev-dependencies]
 axum = { workspace = true }
 http-body-util = { workspace = true }
+metrics = { workspace = true }
+metrics-util = { workspace = true }
 r402-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

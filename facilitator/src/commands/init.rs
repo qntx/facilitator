@@ -63,6 +63,13 @@ log_level = "info"
 "#,
     );
 
+    append_signer_keys(&mut config);
+    append_chain_tables(&mut config);
+    config
+}
+
+/// Append `[signers]` keys for compiled families.
+fn append_signer_keys(config: &mut String) {
     #[cfg(feature = "chain-eip155")]
     config.push_str("# Per-chain EVM override: add `signers` on the chain table.\n");
     #[cfg(feature = "chain-near")]
@@ -94,6 +101,45 @@ log_level = "info"
 ",
     );
 
+    #[cfg(feature = "chain-hedera")]
+    config.push_str(
+        r#"hedera = [{ account_id = "0.0.x", private_key = "$HEDERA_PRIVATE_KEY" }]
+"#,
+    );
+
+    #[cfg(feature = "chain-algorand")]
+    config.push_str(
+        r#"algorand = ["$ALGORAND_SIGNER_SEED"]     # standard-base64 32-byte seed or 64-byte seed||pubkey
+"#,
+    );
+
+    #[cfg(feature = "chain-aptos")]
+    config.push_str(
+        r#"aptos = ["$APTOS_FEE_PAYER_PRIVATE_KEY"] # 32-byte ed25519 hex
+"#,
+    );
+
+    #[cfg(feature = "chain-keeta")]
+    config.push_str(
+        r#"keeta = { seed = "$KEETA_SEED", indices = [0] }  # hex or standard-base64 32-byte seed
+"#,
+    );
+
+    #[cfg(feature = "chain-tvm")]
+    config.push_str(
+        r#"tvm = "$TVM_SIGNER_PRIVATE_KEY"         # hex or base64 32- or 64-byte
+"#,
+    );
+
+    #[cfg(feature = "chain-stellar")]
+    config.push_str(
+        r#"stellar = ["$STELLAR_SECRET_SEED"]     # S… secret
+"#,
+    );
+}
+
+/// Append `[chains.*]` tables for compiled families.
+fn append_chain_tables(config: &mut String) {
     #[cfg(feature = "chain-eip155")]
     config.push_str(
         r#"
@@ -151,7 +197,81 @@ rpc = "https://api.devnet.solana.com"
 "#,
     );
 
-    config
+    #[cfg(feature = "chain-hedera")]
+    config.push_str(
+        r#"
+# Hedera
+#
+# Key format: "hedera:mainnet" | "hedera:testnet"
+# Injected field: fee_payers. No `rpc`; optional mirror_url / node_url.
+# alias_policy = "reject" | "allow".
+
+[chains."hedera:testnet"]
+"#,
+    );
+
+    #[cfg(feature = "chain-algorand")]
+    config.push_str(
+        r#"
+# Algorand
+#
+# Key format: "algorand:<genesis-prefix>"
+# Injected field: signers. No `rpc`; optional algod_url / algod_token / wait_rounds.
+
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+"#,
+    );
+
+    #[cfg(feature = "chain-aptos")]
+    config.push_str(
+        r#"
+# Aptos
+#
+# Key format: "aptos:1" | "aptos:2"
+# Injected field: fee_payers. rpc is an optional string URL.
+# sponsor_transactions defaults true.
+
+[chains."aptos:2"]
+"#,
+    );
+
+    #[cfg(feature = "chain-keeta")]
+    config.push_str(
+        r#"
+# Keeta
+#
+# Key format: "keeta:21378" | "keeta:1413829460"
+# No `rpc`. Seed is hex or standard-base64 32 bytes; mnemonics are not supported.
+
+[chains."keeta:1413829460"]
+"#,
+    );
+
+    #[cfg(feature = "chain-tvm")]
+    config.push_str(
+        r#"
+# TON (TVM)
+#
+# Key format: "tvm:-239" | "tvm:-3"
+# rpc / provider_base_url is an optional string URL. Keep confirmation_timeout_seconds ≤ 20
+# unless the 30 s HTTP client timeout is raised with it.
+
+[chains."tvm:-3"]
+"#,
+    );
+
+    #[cfg(feature = "chain-stellar")]
+    config.push_str(
+        r#"
+# Stellar
+#
+# Key format: "stellar:pubnet" | "stellar:testnet"
+# rpc is an optional string URL; pubnet requires a non-empty rpc.
+# Optional fee_bump / [signers].stellar_fee_bump, horizon_url, max_transaction_fee_stroops.
+
+[chains."stellar:testnet"]
+"#,
+    );
 }
 
 #[cfg(test)]
@@ -215,6 +335,63 @@ mod tests {
         if let Some(signers) = doc.get("signers").and_then(toml::Value::as_table) {
             assert!(!signers.contains_key("xrpl"), "no xrpl signer");
         }
+    }
+
+    #[cfg(feature = "chain-hedera")]
+    #[test]
+    fn generate_default_config_has_hedera_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("hedera:testnet"), "hedera testnet");
+    }
+
+    #[cfg(feature = "chain-algorand")]
+    #[test]
+    fn generate_default_config_has_algorand_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(
+            chains.contains_key("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"),
+            "algorand testnet"
+        );
+    }
+
+    #[cfg(feature = "chain-aptos")]
+    #[test]
+    fn generate_default_config_has_aptos_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("aptos:2"), "aptos testnet");
+    }
+
+    #[cfg(feature = "chain-keeta")]
+    #[test]
+    fn generate_default_config_has_keeta_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("keeta:1413829460"), "keeta testnet");
+    }
+
+    #[cfg(feature = "chain-tvm")]
+    #[test]
+    fn generate_default_config_has_tvm_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("tvm:-3"), "tvm testnet");
+    }
+
+    #[cfg(feature = "chain-stellar")]
+    #[test]
+    fn generate_default_config_has_stellar_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("stellar:testnet"), "stellar testnet");
     }
 
     #[cfg(feature = "chain-solana")]

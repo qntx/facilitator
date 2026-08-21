@@ -8,12 +8,24 @@ use std::str::FromStr;
 use r402_core::chain::ChainId;
 use serde::Deserialize;
 
+#[cfg(feature = "chain-algorand")]
+use crate::chain::algorand::AlgorandChainConfig;
+#[cfg(feature = "chain-aptos")]
+use crate::chain::aptos::AptosChainConfig;
 #[cfg(feature = "chain-eip155")]
 use crate::chain::eip155::Eip155ChainConfig;
+#[cfg(feature = "chain-hedera")]
+use crate::chain::hedera::HederaChainConfig;
+#[cfg(feature = "chain-keeta")]
+use crate::chain::keeta::KeetaChainConfig;
 #[cfg(feature = "chain-near")]
 use crate::chain::near::NearChainConfig;
 #[cfg(feature = "chain-solana")]
 use crate::chain::solana::SolanaChainConfig;
+#[cfg(feature = "chain-stellar")]
+use crate::chain::stellar::StellarChainConfig;
+#[cfg(feature = "chain-tvm")]
+use crate::chain::tvm::TvmChainConfig;
 #[cfg(feature = "chain-xrpl")]
 use crate::chain::xrpl::XrplChainConfig;
 use crate::chain::{blocked_family, family_feature};
@@ -48,6 +60,24 @@ pub(crate) struct ChainsConfig {
     /// XRPL chains, in TOML key order.
     #[cfg(feature = "chain-xrpl")]
     xrpl: Vec<XrplChainConfig>,
+    /// Hedera chains, in TOML key order.
+    #[cfg(feature = "chain-hedera")]
+    hedera: Vec<HederaChainConfig>,
+    /// Algorand chains, in TOML key order.
+    #[cfg(feature = "chain-algorand")]
+    algorand: Vec<AlgorandChainConfig>,
+    /// Aptos chains, in TOML key order.
+    #[cfg(feature = "chain-aptos")]
+    aptos: Vec<AptosChainConfig>,
+    /// Keeta chains, in TOML key order.
+    #[cfg(feature = "chain-keeta")]
+    keeta: Vec<KeetaChainConfig>,
+    /// TVM chains, in TOML key order.
+    #[cfg(feature = "chain-tvm")]
+    tvm: Vec<TvmChainConfig>,
+    /// Stellar chains, in TOML key order.
+    #[cfg(feature = "chain-stellar")]
+    stellar: Vec<StellarChainConfig>,
 }
 
 impl ChainsConfig {
@@ -77,6 +107,48 @@ impl ChainsConfig {
     #[must_use]
     pub(crate) fn xrpl(&self) -> &[XrplChainConfig] {
         &self.xrpl
+    }
+
+    /// Hedera chain configs.
+    #[cfg(feature = "chain-hedera")]
+    #[must_use]
+    pub(crate) fn hedera(&self) -> &[HederaChainConfig] {
+        &self.hedera
+    }
+
+    /// Algorand chain configs.
+    #[cfg(feature = "chain-algorand")]
+    #[must_use]
+    pub(crate) fn algorand(&self) -> &[AlgorandChainConfig] {
+        &self.algorand
+    }
+
+    /// Aptos chain configs.
+    #[cfg(feature = "chain-aptos")]
+    #[must_use]
+    pub(crate) fn aptos(&self) -> &[AptosChainConfig] {
+        &self.aptos
+    }
+
+    /// Keeta chain configs.
+    #[cfg(feature = "chain-keeta")]
+    #[must_use]
+    pub(crate) fn keeta(&self) -> &[KeetaChainConfig] {
+        &self.keeta
+    }
+
+    /// TVM chain configs.
+    #[cfg(feature = "chain-tvm")]
+    #[must_use]
+    pub(crate) fn tvm(&self) -> &[TvmChainConfig] {
+        &self.tvm
+    }
+
+    /// Stellar chain configs.
+    #[cfg(feature = "chain-stellar")]
+    #[must_use]
+    pub(crate) fn stellar(&self) -> &[StellarChainConfig] {
+        &self.stellar
     }
 }
 
@@ -205,6 +277,18 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
     let mut near = Vec::new();
     #[cfg(feature = "chain-xrpl")]
     let mut xrpl = Vec::new();
+    #[cfg(feature = "chain-hedera")]
+    let mut hedera = Vec::new();
+    #[cfg(feature = "chain-algorand")]
+    let mut algorand = Vec::new();
+    #[cfg(feature = "chain-aptos")]
+    let mut aptos = Vec::new();
+    #[cfg(feature = "chain-keeta")]
+    let mut keeta = Vec::new();
+    #[cfg(feature = "chain-tvm")]
+    let mut tvm = Vec::new();
+    #[cfg(feature = "chain-stellar")]
+    let mut stellar = Vec::new();
 
     for (key, value) in raw {
         let chain_id = ChainId::from_str(&key)
@@ -218,6 +302,18 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
             "near" => near.push(NearChainConfig::from_toml(&chain_id, value)?),
             #[cfg(feature = "chain-xrpl")]
             "xrpl" => xrpl.push(XrplChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-hedera")]
+            "hedera" => hedera.push(HederaChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-algorand")]
+            "algorand" => algorand.push(AlgorandChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-aptos")]
+            "aptos" => aptos.push(AptosChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-keeta")]
+            "keeta" => keeta.push(KeetaChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-tvm")]
+            "tvm" => tvm.push(TvmChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-stellar")]
+            "stellar" => stellar.push(StellarChainConfig::from_toml(&chain_id, value)?),
             other => {
                 if let Some(reason) = blocked_family(other) {
                     return Err(AppError::config(format!(
@@ -245,6 +341,18 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
         near,
         #[cfg(feature = "chain-xrpl")]
         xrpl,
+        #[cfg(feature = "chain-hedera")]
+        hedera,
+        #[cfg(feature = "chain-algorand")]
+        algorand,
+        #[cfg(feature = "chain-aptos")]
+        aptos,
+        #[cfg(feature = "chain-keeta")]
+        keeta,
+        #[cfg(feature = "chain-tvm")]
+        tvm,
+        #[cfg(feature = "chain-stellar")]
+        stellar,
     })
 }
 
@@ -460,6 +568,205 @@ max_sponsored_gas = 42
         let config = parse_config_toml(raw).unwrap();
         let chain = config.chains().xrpl().first().expect("one xrpl chain");
         assert_eq!(chain.inner.rpc, None, "rpc optional");
+    }
+
+    #[cfg(not(feature = "chain-hedera"))]
+    #[test]
+    fn parse_rejects_compiled_out_hedera() {
+        let raw = r#"
+[chains."hedera:testnet"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'hedera'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-hedera")]
+    #[test]
+    fn parse_hedera_minimal() {
+        let raw = r#"
+[signers]
+hedera = [{ account_id = "0.0.1234", private_key = "secret" }]
+[chains."hedera:testnet"]
+alias_policy = "allow"
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().hedera().first().expect("one hedera chain");
+        assert_eq!(
+            chain
+                .inner
+                .fee_payers
+                .first()
+                .map(|p| p.account_id.as_str()),
+            Some("0.0.1234"),
+            "injected fee payer"
+        );
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "aliasPolicy": "allow" })),
+            "scheme JSON"
+        );
+    }
+
+    #[cfg(not(feature = "chain-algorand"))]
+    #[test]
+    fn parse_rejects_compiled_out_algorand() {
+        let raw = r#"
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'algorand'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-algorand")]
+    #[test]
+    fn parse_algorand_minimal() {
+        let raw = r#"
+[signers]
+algorand = ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]
+[chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+wait_rounds = 8
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config
+            .chains()
+            .algorand()
+            .first()
+            .expect("one algorand chain");
+        assert_eq!(chain.inner.signers.len(), 1, "injected signer");
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "waitRounds": 8 })),
+            "scheme JSON"
+        );
+    }
+
+    #[cfg(not(feature = "chain-aptos"))]
+    #[test]
+    fn parse_rejects_compiled_out_aptos() {
+        let raw = r#"
+[chains."aptos:2"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'aptos'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-aptos")]
+    #[test]
+    fn parse_aptos_minimal() {
+        let raw = r#"
+[signers]
+aptos = ["0000000000000000000000000000000000000000000000000000000000000001"]
+[chains."aptos:2"]
+sponsor_transactions = false
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().aptos().first().expect("one aptos chain");
+        assert_eq!(chain.inner.fee_payers.len(), 1, "injected fee payer");
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "sponsorTransactions": false })),
+            "scheme JSON"
+        );
+    }
+
+    #[cfg(not(feature = "chain-keeta"))]
+    #[test]
+    fn parse_rejects_compiled_out_keeta() {
+        let raw = r#"
+[chains."keeta:1413829460"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'keeta'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-keeta")]
+    #[test]
+    fn parse_keeta_minimal() {
+        let raw = r#"
+[signers]
+keeta = { seed = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", indices = [0, 1] }
+[chains."keeta:1413829460"]
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().keeta().first().expect("one keeta chain");
+        assert_eq!(chain.inner.indices.as_slice(), &[0, 1], "injected indices");
+        assert!(!chain.inner.seed.is_empty(), "injected seed");
+    }
+
+    #[cfg(not(feature = "chain-tvm"))]
+    #[test]
+    fn parse_rejects_compiled_out_tvm() {
+        let raw = r#"
+[chains."tvm:-3"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'tvm'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-tvm")]
+    #[test]
+    fn parse_tvm_minimal() {
+        let raw = r#"
+[signers]
+tvm = "0000000000000000000000000000000000000000000000000000000000000001"
+[chains."tvm:-3"]
+batch_flush_size = 8
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().tvm().first().expect("one tvm chain");
+        assert!(!chain.inner.signer.is_empty(), "injected signer");
+        assert_eq!(
+            chain.scheme_config_json(),
+            Some(serde_json::json!({ "batchFlushSize": 8 })),
+            "scheme JSON"
+        );
+    }
+
+    #[cfg(not(feature = "chain-stellar"))]
+    #[test]
+    fn parse_rejects_compiled_out_stellar() {
+        let raw = r#"
+[chains."stellar:testnet"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'stellar'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-stellar")]
+    #[test]
+    fn parse_stellar_minimal() {
+        let raw = r#"
+[signers]
+stellar = ["SCKB3ECHCPVM4HJPNCQWTQWJJ5XRL6UNKLTTCIH4B7TB22NKJ5GUFMIV"]
+stellar_fee_bump = "SCKB3ECHCPVM4HJPNCQWTQWJJ5XRL6UNKLTTCIH4B7TB22NKJ5GUFMIV"
+[chains."stellar:testnet"]
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config
+            .chains()
+            .stellar()
+            .first()
+            .expect("one stellar chain");
+        assert_eq!(chain.inner.signers.len(), 1, "injected signer");
+        assert!(chain.inner.fee_bump.is_some(), "injected fee_bump");
     }
 
     #[test]

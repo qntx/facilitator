@@ -67,7 +67,13 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
         feature = "chain-eip155",
         feature = "chain-solana",
         feature = "chain-near",
-        feature = "chain-xrpl"
+        feature = "chain-xrpl",
+        feature = "chain-hedera",
+        feature = "chain-algorand",
+        feature = "chain-aptos",
+        feature = "chain-keeta",
+        feature = "chain-tvm",
+        feature = "chain-stellar"
     )),
     allow(unused_variables, reason = "no compiled chain families in this build")
 )]
@@ -132,6 +138,90 @@ async fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry
             registry
                 .register(&XrplExact, &provider, None)
                 .map_err(|e| AppError::chain(format!("failed to register xrpl exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-hedera")]
+    {
+        use r402_hedera::HederaExact;
+
+        use crate::chain::hedera::build_hedera_provider;
+
+        for chain in config.chains().hedera() {
+            let provider = build_hedera_provider(chain)?;
+            registry
+                .register(&HederaExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register hedera exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-algorand")]
+    {
+        use r402_algorand::AlgorandExact;
+
+        use crate::chain::algorand::build_algorand_provider;
+
+        for chain in config.chains().algorand() {
+            let provider = build_algorand_provider(chain)?;
+            registry
+                .register(&AlgorandExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register algorand exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-aptos")]
+    {
+        use r402_aptos::AptosExact;
+
+        use crate::chain::aptos::build_aptos_provider;
+
+        for chain in config.chains().aptos() {
+            let provider = build_aptos_provider(chain)?;
+            registry
+                .register(&AptosExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register aptos exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-keeta")]
+    {
+        use r402_keeta::KeetaExact;
+
+        use crate::chain::keeta::build_keeta_provider;
+
+        for chain in config.chains().keeta() {
+            let provider = build_keeta_provider(chain)?;
+            registry
+                .register(&KeetaExact, &provider, None)
+                .map_err(|e| AppError::chain(format!("failed to register keeta exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-tvm")]
+    {
+        use r402_tvm::TvmExact;
+
+        use crate::chain::tvm::build_tvm_provider;
+
+        for chain in config.chains().tvm() {
+            let provider = build_tvm_provider(chain)?;
+            registry
+                .register(&TvmExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register tvm exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-stellar")]
+    {
+        use r402_stellar::StellarExact;
+
+        use crate::chain::stellar::build_stellar_provider;
+
+        for chain in config.chains().stellar() {
+            let provider = build_stellar_provider(chain)?;
+            registry
+                .register(&StellarExact, &provider, None)
+                .map_err(|e| AppError::chain(format!("failed to register stellar exact: {e}")))?;
         }
     }
 

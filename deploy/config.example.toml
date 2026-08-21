@@ -243,3 +243,36 @@ rpc = "https://api.devnet.solana.com"
 #
 # [chains."xrpl:1"]
 # rpc = "https://s.altnet.rippletest.net:51234"
+
+# Hedera exact — compile with --features chain-hedera
+# Add `hedera = [{ account_id, private_key }]` under [signers]. No `rpc`.
+#
+# [chains."hedera:testnet"]
+# alias_policy = "allow"
+
+# Algorand exact — compile with --features chain-algorand
+# Add `algorand = ["$ALGORAND_SIGNER_SEED"]` under [signers]. No `rpc`.
+#
+# [chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+# wait_rounds = 8
+
+# Aptos exact — compile with --features chain-aptos
+# Add `aptos = ["$APTOS_FEE_PAYER_PRIVATE_KEY"]` under [signers].
+#
+# [chains."aptos:2"]
+# sponsor_transactions = true
+
+# Keeta exact — compile with --features chain-keeta
+# Add `keeta = { seed = "$KEETA_SEED", indices = [0] }` under [signers]. No `rpc`.
+#
+# [chains."keeta:1413829460"]
+
+# TON (TVM) exact — compile with --features chain-tvm
+# Add `tvm = "$TVM_SIGNER_PRIVATE_KEY"` under [signers].
+#
+# [chains."tvm:-3"]
+
+# Stellar exact — compile with --features chain-stellar
+# Add `stellar = ["$STELLAR_SECRET_SEED"]` under [signers].
+#
+# [chains."stellar:testnet"]
