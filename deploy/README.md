@@ -19,14 +19,14 @@ flowchart LR
 ```
 
 - **Caddy** — Auto-HTTPS, rate limiting, security headers, request filtering. `reverse_proxy facilitator:8080` has **no** transport timeout; Axum **30 s** is the process cap on `/verify`, `/settle`, and `/supported`.
-- **Facilitator** — x402 V2 `POST /verify`, `POST /settle`, `GET /supported`, plus process `GET /health`. Signer keys stay in `config.toml` / env.
-- **Watchtower** — Auto-pulls new images every 5 min. Rolling restart is **off** (`WATCHTOWER_ROLLING_RESTART=false`). Image bumps stop the old container then start the new one (brief blip).
+- **Facilitator** — x402 V2 `POST /verify`, `POST /settle`, `GET /supported`, plus process `GET /health`. Signer keys stay in `config.toml` or in container env (`EVM_SIGNER_PRIVATE_KEY` / `SOLANA_SIGNER_PRIVATE_KEY`). `stop_grace_period: 35s` so SIGTERM can finish the 30 s HTTP budget.
+- **Watchtower** — Auto-pulls new images every 5 min. `WATCHTOWER_ROLLING_RESTART=false`, `WATCHTOWER_TIMEOUT=35`. Rolling restart does **not** overlap two facilitators; with one labeled container it is the same stop-then-start. Do **not** scale.
 
 ## In-memory cache (single worker)
 
-r402 `SettlementCache` (TTL 120 s) and, if you build `scheme-batch-settlement`, `MemoryChannelStore` are **per process**. Two overlapping containers behind Caddy split both: a `/settle` that reserved in A can be replayed on B.
+r402 `SettlementCache` (TTL 120 s) is per process. `MemoryChannelStore` exists only if you build `scheme-batch-settlement`. Two facilitator processes behind one Caddy split those stores: a `/settle` reserved in A can replay on B.
 
-Do **not** enable Watchtower rolling restart. Pin `/settle` to one replica. Do not run two facilitator workers sharing one Caddy vhost.
+Run **one** replica. Do not `docker compose up --scale facilitator=2` (this file's `container_name` already forbids a second copy of the service). A second stack or a second binary sharing the vhost is the failure mode. Watchtower rolling restart does **not** overlap two facilitators.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ cd facilitator-deploy
 
 # 1. Configure — edit these two files:
 cp config.example.toml config.toml
-nano config.toml    # Add EVM / Solana signer private keys (or $VAR + env)
+nano config.toml    # literals, or keep $VAR and put keys in .env / host env
 nano Caddyfile      # Set your domain (replace facilitator.qntx.fun)
 
 # 2. Deploy — one command does everything:
@@ -117,7 +117,7 @@ fctl reload                # Auto-detects config.toml changed → restarts only 
 fctl update                # Pulls latest facilitator → recreate (stop-then-start) → health check
 ```
 
-> Watchtower also auto-updates every 5 minutes (stop-then-start, not rolling). Manual update is only needed for immediate updates.
+> Watchtower also auto-updates every 5 minutes (stop-then-start of the one replica). Manual update is only needed for immediate updates.
 
 ### Something broken → diagnose
 
@@ -161,6 +161,8 @@ rpc = "https://api.devnet.solana.com"
 ```
 
 `receipt_timeout_secs` defaults to **20** and must stay below the **30 s** HTTP / client timeout. Operators who need longer waits raise client `timeoutMs`, process HTTP timeout, and `receipt_timeout_secs` together.
+
+`$EVM_SIGNER_PRIVATE_KEY` / `$SOLANA_SIGNER_PRIVATE_KEY` are resolved inside the container. Compose interpolates host env or a compose-directory `.env` and passes both through `environment:`. Host `export` without that block does not reach the process. Literals in `config.toml` skip env.
 
 > **RPC tip:** Do NOT use free public RPCs in production. Use [Alchemy](https://alchemy.com), [QuickNode](https://quicknode.com), [dRPC](https://drpc.org), or [Helius](https://helius.dev) (Solana).
 

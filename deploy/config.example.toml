@@ -4,7 +4,7 @@
 # SETUP:
 #   cp config.example.toml config.toml
 #   chmod 600 config.toml
-#   nano config.toml   # Fill in signer keys, or keep $VAR and export them
+#   nano config.toml   # literals, or keep $VAR (compose injects the env vars below)
 #
 # Key concepts:
 #   - [signers]  — private keys ONCE, shared across all chains of that family

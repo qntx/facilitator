@@ -34,17 +34,18 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ------------------ Stage 3: Build dependencies + binary --------------------
 FROM chef AS builder
 
+# --no-default-features: FEATURES is the image set, not an overlay on crate defaults.
 ARG FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry
 
 COPY --from=planner /src/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo chef cook --release --features "${FEATURES}" --recipe-path recipe.json
+    cargo chef cook --release --no-default-features --features "${FEATURES}" --recipe-path recipe.json
 
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release --features "${FEATURES}" --bin facilitator \
+    cargo build --release --no-default-features --features "${FEATURES}" --bin facilitator \
     && cp target/release/facilitator /usr/local/bin/facilitator \
     && strip /usr/local/bin/facilitator
 

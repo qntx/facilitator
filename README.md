@@ -50,7 +50,7 @@ docker build -t facilitator --build-arg FEATURES=chain-eip155,chain-solana,schem
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
 ```
 
-Production stack (Caddy + Watchtower): [`deploy/`](deploy/). Watchtower rolling restart is **off** — see cache note below.
+Production stack (Caddy + Watchtower): [`deploy/`](deploy/). One replica; do not scale — see cache note below.
 
 ## API
 
@@ -142,7 +142,7 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
 | **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
 
-`SettlementCache` (in-memory, TTL 120 s) and `MemoryChannelStore` live in one process. Two overlapping containers behind Caddy split both (duplicate `/settle`). `deploy/docker-compose.yml` sets `WATCHTOWER_ROLLING_RESTART=false` so image bumps stop-then-start (brief blip). Do not turn rolling restart on.
+`SettlementCache` (in-memory, TTL 120 s) is per process. `MemoryChannelStore` exists only if `scheme-batch-settlement` is built. Pin `/settle` to one replica; do not scale or put two facilitators behind one Caddy. Watchtower rolling restart does not overlap two copies of this compose service.
 
 ## Feature Flags
 
