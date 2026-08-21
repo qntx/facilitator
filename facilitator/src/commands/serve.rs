@@ -1,28 +1,17 @@
 //! `facilitator serve` command — start the facilitator HTTP server.
-//!
-//! Reads TOML configuration, initialises chain providers and scheme handlers,
-//! then starts an Axum HTTP server with graceful shutdown support.
 
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::http::{Method, StatusCode};
+use axum::http::Method;
 use dotenvy::dotenv;
-use r402::chain::ChainProvider as ChainProviderTrait;
-use r402::hooks::HookedFacilitator;
-use r402::scheme::SchemeRegistry;
-#[cfg(feature = "chain-eip155")]
-use r402_evm::Eip155Exact;
-#[cfg(feature = "chain-solana")]
-use r402_svm::SolanaExact;
+use r402_core::facilitator::HookedFacilitator;
+use r402_core::scheme::SchemeRegistry;
 use tower_http::cors;
-use tower_http::timeout::TimeoutLayer;
 
-use crate::chain::build_chain_registry;
 use crate::config::load_config;
 use crate::error::AppError;
 use crate::routes::{self, FacilitatorState};
@@ -50,20 +39,18 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
         .with_log_level(config.log_level())
         .register();
 
-    let chain_registry = build_chain_registry(config.chains()).await?;
-    let scheme_registry = register_schemes(&chain_registry, config.schemes());
-
-    let facilitator = HookedFacilitator::new(scheme_registry);
+    let registry = build_registry(&config)?;
+    let facilitator = HookedFacilitator::new(registry);
     let axum_state: FacilitatorState = Arc::new(facilitator);
 
-    let http_endpoints = build_router(Arc::clone(&axum_state));
+    let http_endpoints = build_router(axum_state);
 
     let addr = SocketAddr::new(config.host(), config.port());
-    tracing::info!("Starting server at http://{}", addr);
+    tracing::info!("Starting server at http://{addr}");
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .inspect_err(|e| tracing::error!("Failed to bind to {}: {}", addr, e))
+        .inspect_err(|e| tracing::error!("Failed to bind to {addr}: {e}"))
         .map_err(|e| AppError::server_with("failed to bind", e))?;
 
     axum::serve(listener, http_endpoints)
@@ -74,50 +61,31 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Register scheme handlers for all configured chain/scheme combinations.
-fn register_schemes(
-    chain_registry: &r402::chain::ChainRegistry<crate::chain::ChainProvider>,
-    schemes: &[crate::config::SchemeEntry],
-) -> SchemeRegistry {
-    let mut scheme_registry = SchemeRegistry::new();
-    for scheme_entry in schemes {
-        let matching_providers = chain_registry.by_chain_id_pattern(&scheme_entry.chains);
-        for provider in matching_providers {
-            let chain_id = provider.chain_id();
-            let namespace = chain_id.namespace();
-            let result: Result<(), Box<dyn std::error::Error>> = match namespace {
-                #[cfg(feature = "chain-eip155")]
-                "eip155" => {
-                    scheme_registry.register(&Eip155Exact, provider, scheme_entry.config.clone())
-                }
-                #[cfg(feature = "chain-solana")]
-                "solana" => {
-                    scheme_registry.register(&SolanaExact, provider, scheme_entry.config.clone())
-                }
-                _ => {
-                    tracing::warn!(
-                        namespace,
-                        chain = %chain_id,
-                        scheme = %scheme_entry.id,
-                        "Skipping unsupported namespace"
-                    );
-                    Ok(())
-                }
-            };
-            if let Err(e) = result {
-                tracing::warn!(
-                    chain = %chain_id,
-                    scheme = %scheme_entry.id,
-                    error = %e,
-                    "Failed to register scheme handler"
-                );
-            }
+/// Construct chain handles and register compiled schemes.
+#[cfg_attr(
+    not(feature = "chain-eip155"),
+    allow(unused_variables, reason = "no compiled chain families in this build")
+)]
+fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppError> {
+    let mut registry = SchemeRegistry::new();
+
+    #[cfg(feature = "chain-eip155")]
+    {
+        use crate::chain::eip155::build_eip155_handle;
+        use r402_evm::Eip155Exact;
+
+        for chain in config.chains().eip155() {
+            let handle = build_eip155_handle(chain)?;
+            registry
+                .register(&Eip155Exact, &handle, None)
+                .map_err(|e| AppError::chain(format!("failed to register eip155 exact: {e}")))?;
         }
     }
-    scheme_registry
+
+    Ok(registry)
 }
 
-/// Build the Axum router with all middleware layers.
+/// Process middleware only. 30s/5s timeouts are inside `routes()` so health is not bound to the protocol budget.
 fn build_router(state: FacilitatorState) -> Router {
     Router::new()
         .merge(routes::routes().with_state(state))
@@ -129,10 +97,6 @@ fn build_router(state: FacilitatorState) -> Router {
                 .allow_headers(cors::Any),
         )
         .layer(DefaultBodyLimit::max(64 * 1024))
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::GATEWAY_TIMEOUT,
-            Duration::from_secs(45),
-        ))
 }
 
 /// Wait for a shutdown signal (Ctrl+C on all platforms, SIGTERM on Unix).

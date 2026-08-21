@@ -1,54 +1,54 @@
-//! Configuration loading and default template generation.
-//!
-//! This module provides:
-//!
-//! - [`Config`] — Server configuration combining host/port, chain configs,
-//!   and scheme registrations backed by [`ChainsConfig`].
-//! - [`load_config`] — Reads and parses a TOML configuration file, with
-//!   automatic global-signer injection and scheme auto-generation.
-//!
-//! # Configuration File Format
-//!
-//! ```toml
-//! host = "0.0.0.0"
-//! port = 8080
-//!
-//! [signers]
-//! evm = ["$EVM_SIGNER_PRIVATE_KEY"]
-//! solana = "$SOLANA_SIGNER_PRIVATE_KEY"
-//!
-//! [chains."eip155:84532"]
-//! rpc = [{ http = "https://sepolia.base.org" }]
-//!
-//! # [[schemes]] is optional — auto-generated from configured chains.
-//! ```
+//! Configuration loading.
 
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::path::Path;
+use std::str::FromStr;
 
-use r402::chain::ChainIdPattern;
-use serde::{Deserialize, Serialize};
+use r402_core::chain::ChainId;
+use serde::Deserialize;
 
-use crate::chain::ChainsConfig;
+use crate::chain::family_feature;
 use crate::error::AppError;
 use crate::signers;
 
-/// Scheme registration entry from the TOML config.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct SchemeEntry {
-    /// Scheme identifier (e.g. "v2-eip155-exact").
-    pub id: String,
-    /// Chain pattern (e.g. "eip155:*").
-    pub chains: ChainIdPattern,
-    /// Optional scheme-specific configuration.
-    #[serde(flatten)]
-    pub config: Option<serde_json::Value>,
+#[cfg(feature = "chain-eip155")]
+use crate::chain::eip155::Eip155ChainConfig;
+
+/// Server configuration combining host/port and chain configs.
+#[derive(Debug, Clone)]
+pub(crate) struct Config {
+    /// Bind address (default: 0.0.0.0).
+    host: IpAddr,
+    /// Listen port (default: 8080).
+    port: u16,
+    /// Log level filter (default: "info").
+    log_level: String,
+    /// Parsed chain configurations.
+    chains: ChainsConfig,
 }
 
-/// Server configuration combining host/port, chain configs, and scheme registrations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Config {
+/// Ordered collection of per-family chain configs.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ChainsConfig {
+    /// EIP-155 chains, in TOML key order.
+    #[cfg(feature = "chain-eip155")]
+    eip155: Vec<Eip155ChainConfig>,
+}
+
+impl ChainsConfig {
+    /// EIP-155 chain configs.
+    #[cfg(feature = "chain-eip155")]
+    #[must_use]
+    pub(crate) fn eip155(&self) -> &[Eip155ChainConfig] {
+        &self.eip155
+    }
+}
+
+/// Wire shape of the TOML file after signer injection.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConfig {
     /// Bind address (default: 0.0.0.0).
     #[serde(default = "default_host")]
     host: IpAddr,
@@ -56,23 +56,19 @@ pub(crate) struct Config {
     #[serde(default = "default_port")]
     port: u16,
     /// Log level filter (default: "info").
-    ///
-    /// Accepts any valid `tracing` [`EnvFilter`](tracing_subscriber::EnvFilter)
-    /// directive, e.g. `"debug"`, `"facilitator=debug,r402=trace"`.
-    /// The `RUST_LOG` environment variable takes precedence when set.
     #[serde(default = "default_log_level")]
     log_level: String,
-    /// Chain provider configurations keyed by CAIP-2 identifier.
+    /// Raw chain tables keyed by CAIP-2 identifier.
     #[serde(default)]
-    chains: ChainsConfig,
-    /// Scheme registrations (optional, auto-generated if absent).
-    #[serde(default)]
-    schemes: Vec<SchemeEntry>,
+    chains: BTreeMap<String, toml::Value>,
 }
 
-/// Default bind address: all interfaces.
-const fn default_host() -> IpAddr {
-    IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
+/// Default bind address: `HOST` env, else all interfaces.
+fn default_host() -> IpAddr {
+    std::env::var("HOST")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED))
 }
 
 /// Default listen port, overridable via `PORT` env var.
@@ -112,22 +108,15 @@ impl Config {
     pub(crate) const fn chains(&self) -> &ChainsConfig {
         &self.chains
     }
-
-    /// Returns a reference to the scheme registrations.
-    #[must_use]
-    pub(crate) fn schemes(&self) -> &[SchemeEntry] {
-        &self.schemes
-    }
 }
 
 /// Load configuration from a TOML file at the given path.
 ///
-/// Values not present in the file fall back to environment variables
-/// (`PORT`, `HOST`) and then to hardcoded defaults.
-///
 /// # Errors
 ///
-/// Returns an error if the file cannot be resolved, read, or parsed.
+/// Returns an error if the file cannot be resolved, read, or parsed, if
+/// `[[schemes]]` is present, if `[chains]` is empty, or if a chain family is
+/// unknown / compiled out.
 pub(crate) fn load_config(path: &Path) -> Result<Config, AppError> {
     let config_path = path
         .canonicalize()
@@ -135,67 +124,70 @@ pub(crate) fn load_config(path: &Path) -> Result<Config, AppError> {
     let raw_content = std::fs::read_to_string(&config_path).map_err(|e| {
         AppError::config_with(format!("failed to read '{}'", config_path.display()), e)
     })?;
+    parse_config_toml(&raw_content)
+}
 
-    let mut doc: BTreeMap<String, toml::Value> = toml::from_str(&raw_content).map_err(|e| {
-        AppError::config_with(format!("failed to parse '{}'", config_path.display()), e)
-    })?;
-
-    // Step 1: resolve signers and inject into chain entries
+/// Parse a TOML config document.
+///
+/// # Errors
+///
+/// Same as [`load_config`].
+pub(crate) fn parse_config_toml(raw: &str) -> Result<Config, AppError> {
+    let mut doc: BTreeMap<String, toml::Value> =
+        toml::from_str(raw).map_err(|e| AppError::config_with("failed to parse config TOML", e))?;
+    if doc.contains_key("schemes") {
+        return Err(AppError::config(
+            "delete [[schemes]]; schemes come from Cargo features",
+        ));
+    }
     signers::preprocess_signers(&mut doc)?;
-
-    // Step 2: auto-generate [[schemes]] if absent
-    auto_generate_schemes(&mut doc);
-
-    let config: Config = toml::Value::Table(doc.into_iter().collect())
+    let table: toml::map::Map<String, toml::Value> = doc.into_iter().collect();
+    let parsed: RawConfig = toml::Value::Table(table)
         .try_into()
         .map_err(|e: toml::de::Error| AppError::config_with("invalid config", e))?;
-    Ok(config)
+    let chains = parse_chains(parsed.chains)?;
+    Ok(Config {
+        host: parsed.host,
+        port: parsed.port,
+        log_level: parsed.log_level,
+        chains,
+    })
 }
 
-/// Auto-generate `[[schemes]]` entries from configured chains when the section
-/// is absent or empty.
-fn auto_generate_schemes(doc: &mut BTreeMap<String, toml::Value>) {
-    let needs_schemes = match doc.get("schemes") {
-        None => true,
-        Some(toml::Value::Array(arr)) => arr.is_empty(),
-        _ => false,
-    };
-    if !needs_schemes {
-        return;
+/// Parse CAIP-2 keyed chain tables into compiled family configs.
+fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppError> {
+    if raw.is_empty() {
+        return Err(AppError::config(
+            "empty [chains]; a facilitator with no kinds is useless",
+        ));
     }
-
-    let has_evm = has_chain_namespace(doc, "eip155:");
-    let has_solana = has_chain_namespace(doc, "solana:");
-    let mut schemes = Vec::new();
 
     #[cfg(feature = "chain-eip155")]
-    if has_evm {
-        schemes.push(scheme_entry("eip155-exact", "eip155:*"));
+    let mut eip155 = Vec::new();
+
+    for (key, value) in raw {
+        let chain_id = ChainId::from_str(&key)
+            .map_err(|e| AppError::config_with(format!("invalid chain id '{key}'"), e))?;
+        match chain_id.namespace() {
+            #[cfg(feature = "chain-eip155")]
+            "eip155" => eip155.push(Eip155ChainConfig::from_toml(&chain_id, value)?),
+            other => {
+                if let Some(feature) = family_feature(other) {
+                    return Err(AppError::config(format!(
+                        "compiled-out family '{other}' in [chains.\"{key}\"]; rebuild with --features {feature}"
+                    )));
+                }
+                return Err(AppError::config(format!(
+                    "unknown CAIP-2 namespace '{other}' in [chains.\"{key}\"]"
+                )));
+            }
+        }
     }
 
-    #[cfg(feature = "chain-solana")]
-    if has_solana {
-        schemes.push(scheme_entry("solana-exact", "solana:*"));
-    }
-
-    if !schemes.is_empty() {
-        doc.insert("schemes".to_owned(), toml::Value::Array(schemes));
-    }
-}
-
-/// Check if any chain key starts with the given namespace prefix.
-fn has_chain_namespace(doc: &BTreeMap<String, toml::Value>, prefix: &str) -> bool {
-    doc.get("chains")
-        .and_then(|v| v.as_table())
-        .is_some_and(|chains| chains.keys().any(|k| k.starts_with(prefix)))
-}
-
-/// Build a single `[[schemes]]` TOML table entry.
-fn scheme_entry(id: &str, chains: &str) -> toml::Value {
-    let mut entry = toml::map::Map::new();
-    entry.insert("id".to_owned(), toml::Value::String(id.to_owned()));
-    entry.insert("chains".to_owned(), toml::Value::String(chains.to_owned()));
-    toml::Value::Table(entry)
+    Ok(ChainsConfig {
+        #[cfg(feature = "chain-eip155")]
+        eip155,
+    })
 }
 
 #[cfg(test)]
@@ -203,136 +195,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn has_chain_namespace_matches_eip155() {
-        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
-        let mut chains = toml::map::Map::new();
-        chains.insert(
-            "eip155:84532".into(),
-            toml::Value::Table(toml::map::Map::new()),
+    fn parse_rejects_schemes_table() {
+        let raw = r#"
+host = "127.0.0.1"
+[[schemes]]
+id = "eip155-exact"
+[chains."eip155:84532"]
+rpc = [{ http = "https://example.com" }]
+signers = ["0xabc"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(err.to_string().contains("delete [[schemes]]"), "got {err}");
+    }
+
+    #[test]
+    fn parse_rejects_empty_chains() {
+        let raw = "host = \"127.0.0.1\"\nport = 8080\n";
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(err.to_string().contains("empty [chains]"), "got {err}");
+    }
+
+    #[test]
+    fn parse_rejects_unknown_namespace() {
+        let raw = r#"
+[chains."foo:bar"]
+rpc = "https://example.com"
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown CAIP-2 namespace"),
+            "got {err}"
         );
-        doc.insert("chains".into(), toml::Value::Table(chains));
-
-        assert!(has_chain_namespace(&doc, "eip155:"));
-        assert!(!has_chain_namespace(&doc, "solana:"));
     }
 
     #[test]
-    fn has_chain_namespace_no_chains() {
-        let doc: BTreeMap<String, toml::Value> = BTreeMap::new();
-        assert!(!has_chain_namespace(&doc, "eip155:"));
+    fn parse_rejects_compiled_out_solana() {
+        let raw = r#"
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'solana'"),
+            "got {err}"
+        );
     }
 
+    #[cfg(feature = "chain-eip155")]
     #[test]
-    fn scheme_entry_builds_correct_table() {
-        let entry = scheme_entry("eip155-exact", "eip155:*");
-        let table = entry.as_table().unwrap();
+    fn parse_eip155_minimal() {
+        let raw = r#"
+host = "127.0.0.1"
+port = 9090
+[signers]
+evm = ["0xabc"]
+[chains."eip155:84532"]
+rpc = [{ http = "https://sepolia.base.org" }]
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        assert_eq!(config.port(), 9090, "port");
+        let chain = config.chains().eip155().first().expect("one eip155 chain");
         assert_eq!(
-            table.get("id").and_then(toml::Value::as_str),
-            Some("eip155-exact")
+            chain.inner.receipt_timeout_secs, 20,
+            "default receipt timeout"
         );
         assert_eq!(
-            table.get("chains").and_then(toml::Value::as_str),
-            Some("eip155:*")
+            chain.inner.signers.as_slice(),
+            &["0xabc".to_owned()],
+            "injected signer"
         );
-    }
-
-    #[test]
-    fn auto_generate_schemes_creates_entries() {
-        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
-        let mut chains = toml::map::Map::new();
-        chains.insert(
-            "eip155:84532".into(),
-            toml::Value::Table(toml::map::Map::new()),
-        );
-        doc.insert("chains".into(), toml::Value::Table(chains));
-
-        auto_generate_schemes(&mut doc);
-
-        #[cfg(feature = "chain-eip155")]
-        {
-            let schemes = doc.get("schemes").and_then(toml::Value::as_array).unwrap();
-            assert!(!schemes.is_empty());
-            let first = schemes.first().and_then(toml::Value::as_table).unwrap();
-            assert_eq!(
-                first.get("id").and_then(toml::Value::as_str),
-                Some("eip155-exact")
-            );
-            assert_eq!(
-                first.get("chains").and_then(toml::Value::as_str),
-                Some("eip155:*")
-            );
-        }
-    }
-
-    #[test]
-    fn auto_generate_schemes_skips_when_present() {
-        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
-        let mut chains = toml::map::Map::new();
-        chains.insert(
-            "eip155:84532".into(),
-            toml::Value::Table(toml::map::Map::new()),
-        );
-        doc.insert("chains".into(), toml::Value::Table(chains));
-
-        // Pre-populate with a custom scheme
-        let existing = vec![scheme_entry("custom-scheme", "eip155:1")];
-        doc.insert("schemes".into(), toml::Value::Array(existing));
-
-        auto_generate_schemes(&mut doc);
-
-        let schemes = doc.get("schemes").and_then(toml::Value::as_array).unwrap();
-        assert_eq!(schemes.len(), 1);
-        assert_eq!(
-            schemes
-                .first()
-                .and_then(toml::Value::as_table)
-                .and_then(|t| t.get("id"))
-                .and_then(toml::Value::as_str),
-            Some("custom-scheme")
-        );
-    }
-
-    #[test]
-    fn auto_generate_schemes_fills_empty_array() {
-        let mut doc: BTreeMap<String, toml::Value> = BTreeMap::new();
-        let mut chains = toml::map::Map::new();
-        chains.insert(
-            "eip155:84532".into(),
-            toml::Value::Table(toml::map::Map::new()),
-        );
-        doc.insert("chains".into(), toml::Value::Table(chains));
-        doc.insert("schemes".into(), toml::Value::Array(vec![]));
-
-        auto_generate_schemes(&mut doc);
-
-        #[cfg(feature = "chain-eip155")]
-        {
-            let schemes = doc.get("schemes").and_then(toml::Value::as_array).unwrap();
-            assert!(!schemes.is_empty());
-        }
-    }
-
-    #[test]
-    fn load_config_minimal_file() {
-        let config_content = "host = \"127.0.0.1\"\nport = 9090\n";
-        let dir = std::env::temp_dir().join("facilitator_test_load");
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("minimal.toml");
-        std::fs::write(&path, config_content).unwrap();
-
-        let config = load_config(&path).unwrap();
-        assert_eq!(config.port(), 9090);
-        assert_eq!(config.host(), "127.0.0.1".parse::<IpAddr>().unwrap());
-        assert!(config.schemes().is_empty());
-
-        drop(std::fs::remove_file(&path));
-        drop(std::fs::remove_dir(&dir));
     }
 
     #[test]
     fn load_config_nonexistent_file_errors() {
         let result = load_config(Path::new("/tmp/does_not_exist_facilitator.toml"));
-        assert!(result.is_err());
+        assert!(result.is_err(), "missing file");
     }
 
     #[test]
@@ -341,10 +278,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("invalid.toml");
         std::fs::write(&path, "this is [[[not valid toml").unwrap();
-
-        let result = load_config(&path);
-        assert!(result.is_err());
-
+        assert!(load_config(&path).is_err(), "invalid toml");
         drop(std::fs::remove_file(&path));
         drop(std::fs::remove_dir(&dir));
     }

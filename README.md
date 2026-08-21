@@ -14,14 +14,14 @@
 [docker-url]: https://github.com/qntx/facilitator/pkgs/container/facilitator
 [license-badge]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg
 [license-url]: #license
-[rust-badge]: https://img.shields.io/badge/rust-edition%202024-orange.svg
+[rust-badge]: https://img.shields.io/badge/rust-1.95%20%2B%20edition%202024-orange.svg
 [rust-url]: https://doc.rust-lang.org/edition-guide/
 
-**Production-ready [x402 payment protocol](https://www.x402.org/) facilitator — verifies payment signatures and settles transactions on-chain over HTTP 402.**
+**[x402](https://www.x402.org/) V2 facilitator process** — verifies payment payloads and settles transactions on-chain over HTTP.
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402), the modular Rust SDK for x402. See [Security](SECURITY.md) before using in production.
+Built on [r402](https://github.com/qntx/r402) **0.17.1**. This 1.0.0 process ships **EIP-155 exact** only; Solana and extra EVM schemes land in later PRs. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -36,6 +36,8 @@ facilitator init
 facilitator serve
 ```
 
+Requires **Rust 1.95**.
+
 ### Docker
 
 ```bash
@@ -44,7 +46,7 @@ docker run -p 8080:8080 -v ./config.toml:/app/config.toml ghcr.io/qntx/facilitat
 
 # Or build from source
 docker build -t facilitator .
-docker build -t facilitator --build-arg FEATURES=chain-eip155 .   # EVM only
+docker build -t facilitator --build-arg FEATURES=chain-eip155,telemetry .
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
 ```
 
@@ -55,7 +57,9 @@ docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
 | `GET` | `/supported` | List supported payment kinds (version / scheme / network) |
 | `POST` | `/verify` | Verify a payment payload against requirements |
 | `POST` | `/settle` | Settle an accepted payment on-chain |
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Process liveness (not part of the x402 protocol) |
+
+There is no `GET /`. Protocol verify/settle outcomes are HTTP 200 with structured JSON (`isValid` / `success`). HTTP 400 is only returned for an unparseable body.
 
 ## CLI
 
@@ -92,34 +96,26 @@ Options:
 
 ## Configuration
 
-The server loads configuration from a TOML file (default: `config.toml`). Run `facilitator init` to generate a fully commented template.
+The server loads configuration from a TOML file (default: `config.toml`). Run `facilitator init` to generate a template for families compiled into the binary.
 
 ```toml
 host = "0.0.0.0"
 port = 8080
+log_level = "info"
 
-# Global signers — shared across all chains of the same type.
-# Env-var references ("$VAR" or "${VAR}") are resolved at startup.
 [signers]
-evm    = ["$EVM_SIGNER_PRIVATE_KEY"]       # hex, 0x-prefixed
-solana = "$SOLANA_SIGNER_PRIVATE_KEY"       # base58, 64-byte keypair
-
-# EVM chains (CAIP-2 key format: "eip155:<chain_id>")
-[chains."eip155:8453"]
-rpc = [{ http = "https://mainnet.base.org" }]
+evm = ["$EVM_SIGNER_PRIVATE_KEY"]       # hex, 0x-prefixed
 
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
-
-# Solana chains
-[chains."solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
-rpc = "https://api.mainnet-beta.solana.com"
-
-# Scheme registrations (optional — auto-generated from configured chains)
-# [[schemes]]
-# id = "v2-eip155-exact"
-# chains = "eip155:{8453,84532}"
+receipt_timeout_secs = 20
 ```
+
+Do **not** add `[[schemes]]`. Schemes are compile-time (`chain-eip155` registers EVM exact). A `schemes` key is a startup error.
+
+Empty `[chains]`, an unknown CAIP-2 namespace, or a family not compiled into the binary is a startup error.
+
+HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`. Keep `receipt_timeout_secs` below the 30 s client budget (default 20).
 
 ### Environment Variables
 
@@ -132,20 +128,17 @@ rpc = "https://api.mainnet-beta.solana.com"
 
 ## Supported Chains
 
-| Family | Networks |
-| --- | --- |
-| **EVM (EIP-155)** | Ethereum, Base, Optimism, Arbitrum, Polygon, Avalanche, Celo, Monad, and testnets |
-| **Solana (SVM)** | Mainnet, Devnet, and custom clusters |
+| Family | This build | Notes |
+| --- | --- | --- |
+| **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
+| **Solana (SVM)** | later PR | Not compiled in 1.0.0-pr1 default features |
 
 ## Feature Flags
 
 | Feature | Default | Description |
 | --- | --- | --- |
-| `chain-eip155` | ✓ | EVM chain support via [r402-evm](https://crates.io/crates/r402-evm) |
-| `chain-solana` | ✓ | Solana chain support via [r402-svm](https://crates.io/crates/r402-svm) |
+| `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
-
-Disable unused chains to reduce binary size and compile time:
 
 ```bash
 cargo install facilitator --no-default-features --features chain-eip155
