@@ -5,7 +5,7 @@ use r402_stellar::chain::StellarChainReference;
 use r402_stellar::{StellarChainProvider, StellarSigner};
 use serde::Deserialize;
 
-use super::require_string_rpc;
+use super::{nonempty_string, require_string_url};
 use crate::error::AppError;
 
 /// Inner configuration for a Stellar chain (matches TOML structure).
@@ -49,10 +49,19 @@ impl StellarChainConfig {
     pub(crate) fn from_toml(chain_id: &ChainId, value: toml::Value) -> Result<Self, AppError> {
         let chain_reference = StellarChainReference::try_from(chain_id.clone())
             .map_err(|e| AppError::config_with(format!("invalid chain id '{chain_id}'"), e))?;
-        require_string_rpc(chain_id, &value)?;
-        let inner: StellarChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
-            AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
-        })?;
+        require_string_url(chain_id, &value, "rpc")?;
+        let mut inner: StellarChainConfigInner =
+            value.try_into().map_err(|e: toml::de::Error| {
+                AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
+            })?;
+        inner.rpc = nonempty_string(inner.rpc);
+        inner.horizon_url = nonempty_string(inner.horizon_url);
+        inner.fee_bump = nonempty_string(inner.fee_bump);
+        inner.signers = inner
+            .signers
+            .into_iter()
+            .filter_map(|s| nonempty_string(Some(s)))
+            .collect();
         Ok(Self {
             chain_reference,
             inner,
@@ -146,6 +155,38 @@ mod tests {
     #[test]
     fn build_rejects_empty_signers() {
         let value = toml::from_str("signers = []").unwrap();
+        let config = StellarChainConfig::from_toml(&testnet_id(), value).unwrap();
+        let err = build_stellar_provider(&config).unwrap_err();
+        assert!(
+            err.to_string().contains("no signers configured"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn from_toml_trims_secrets_and_blank_urls() {
+        let value = toml::from_str(&format!(
+            "signers = [\" {SECRET} \\n\", \"  \"]\nfee_bump = \" {SECRET} \"\nhorizon_url = \"  \"\nrpc = \"  \""
+        ))
+        .unwrap();
+        let config = StellarChainConfig::from_toml(&testnet_id(), value).unwrap();
+        assert_eq!(
+            config.inner.signers.as_slice(),
+            &[SECRET.to_owned()],
+            "trim"
+        );
+        assert_eq!(
+            config.inner.fee_bump.as_deref(),
+            Some(SECRET),
+            "fee_bump trim"
+        );
+        assert_eq!(config.inner.horizon_url, None, "blank horizon");
+        assert_eq!(config.inner.rpc, None, "blank rpc");
+    }
+
+    #[test]
+    fn build_rejects_whitespace_only_signers() {
+        let value = toml::from_str("signers = [\"  \"]").unwrap();
         let config = StellarChainConfig::from_toml(&testnet_id(), value).unwrap();
         let err = build_stellar_provider(&config).unwrap_err();
         assert!(

@@ -5,7 +5,7 @@ use r402_tvm::chain::{TvmChainReference, TvmProviderKind};
 use r402_tvm::{HighloadV3Config, TvmChainProvider};
 use serde::Deserialize;
 
-use super::require_string_rpc;
+use super::{nonempty_string, require_string_url};
 use crate::error::AppError;
 
 /// Inner configuration for a TVM chain (matches TOML structure).
@@ -70,15 +70,19 @@ impl TvmChainConfig {
     ///
     /// # Errors
     ///
-    /// Returns an error if the reference is not `-239`/`-3`, `rpc` is present
-    /// but not a string, or the table does not match [`TvmChainConfigInner`].
+    /// Returns an error if the reference is not `-239`/`-3`, `rpc` /
+    /// `provider_base_url` is present but not a string, or the table does not
+    /// match [`TvmChainConfigInner`].
     pub(crate) fn from_toml(chain_id: &ChainId, value: toml::Value) -> Result<Self, AppError> {
         let chain_reference = TvmChainReference::try_from(chain_id.clone())
             .map_err(|e| AppError::config_with(format!("invalid chain id '{chain_id}'"), e))?;
-        require_string_rpc(chain_id, &value)?;
-        let inner: TvmChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
+        require_string_url(chain_id, &value, "rpc")?;
+        require_string_url(chain_id, &value, "provider_base_url")?;
+        let mut inner: TvmChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
             AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
         })?;
+        inner.rpc = nonempty_string(inner.rpc);
+        inner.provider_base_url = nonempty_string(inner.provider_base_url);
         Ok(Self {
             chain_reference,
             inner,
@@ -192,6 +196,44 @@ mod tests {
         assert!(
             err.to_string().contains("`rpc` must be a string URL"),
             "got {err}"
+        );
+    }
+
+    #[test]
+    fn from_toml_rejects_evm_shaped_provider_base_url() {
+        let value =
+            toml::from_str(r#"provider_base_url = [{ http = "https://example.com" }]"#).unwrap();
+        let err = TvmChainConfig::from_toml(&chain_id(), value).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("`provider_base_url` must be a string URL"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn from_toml_blank_rpc_is_unset() {
+        let value = toml::from_str("signer = \"00\"\nrpc = \"  \"").unwrap();
+        let config = TvmChainConfig::from_toml(&chain_id(), value).unwrap();
+        assert_eq!(config.inner.rpc, None, "whitespace rpc");
+    }
+
+    #[test]
+    fn from_toml_blank_provider_base_url_falls_back_to_rpc() {
+        let value = toml::from_str(
+            r#"
+signer = "00"
+provider_base_url = "  "
+rpc = "https://testnet.toncenter.com"
+"#,
+        )
+        .unwrap();
+        let config = TvmChainConfig::from_toml(&chain_id(), value).unwrap();
+        assert_eq!(config.inner.provider_base_url, None, "blank override");
+        assert_eq!(
+            config.inner.rpc.as_deref(),
+            Some("https://testnet.toncenter.com"),
+            "rpc kept"
         );
     }
 

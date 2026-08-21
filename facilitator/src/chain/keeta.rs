@@ -122,7 +122,8 @@ fn decode_hex32(hex_src: &str) -> Result<[u8; 32], AppError> {
 /// # Errors
 ///
 /// Returns an error if the seed is empty, looks like a mnemonic, is not 32
-/// bytes, an index cannot be derived, or the network client cannot be built.
+/// bytes, indices are empty or duplicated, an index cannot be derived, or the
+/// network client cannot be built.
 pub(crate) fn build_keeta_provider(
     config: &KeetaChainConfig,
 ) -> Result<KeetaChainProvider, AppError> {
@@ -137,10 +138,17 @@ pub(crate) fn build_keeta_provider(
             "no indices configured for Keeta chain {chain_id}"
         )));
     }
-
     let seed = decode_32_byte_seed(&config.inner.seed)?;
+    let mut seen = Vec::with_capacity(config.inner.indices.len());
     let mut fee_payers = Vec::with_capacity(config.inner.indices.len());
     for index in &config.inner.indices {
+        // Identical indices would feed SettlementQueue two copies of one account.
+        if seen.contains(index) {
+            return Err(AppError::chain(format!(
+                "duplicate Keeta derivation indices for chain {chain_id}"
+            )));
+        }
+        seen.push(*index);
         let payer = KeetaFeePayer::from_ed25519_seed(seed, *index)
             .map_err(|e| AppError::chain_with("failed to derive Keeta fee payer", e))?;
         fee_payers.push(payer);
@@ -227,6 +235,19 @@ mod tests {
         let err = build_keeta_provider(&config).unwrap_err();
         assert!(
             err.to_string().contains("no indices configured"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn build_rejects_duplicate_indices() {
+        let value =
+            toml::from_str(&format!("seed = \"{ZERO_SEED_B64}\"\nindices = [0, 0]")).unwrap();
+        let config = KeetaChainConfig::from_toml(&chain_id(), value).unwrap();
+        let err = build_keeta_provider(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("duplicate Keeta derivation indices"),
             "got {err}"
         );
     }

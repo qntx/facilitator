@@ -104,27 +104,41 @@ fn inject_resolved_signers(
     }
 }
 
-/// Inject `{ seed, indices }` when the chain table has no `seed`.
+/// Inject Keeta `seed` / `indices` independently; per-chain keys win.
 fn inject_keeta_seed_and_indices(
     chain_table: &mut toml::map::Map<String, toml::Value>,
     keeta: Option<&toml::Value>,
 ) {
-    if chain_table.contains_key("seed") {
-        return;
-    }
     match keeta {
         Some(toml::Value::String(s)) => {
-            chain_table.insert("seed".to_owned(), toml::Value::String(s.clone()));
+            let seed = toml::Value::String(s.clone());
+            inject_field(chain_table, "seed", Some(&seed));
         }
         Some(toml::Value::Table(table)) => {
-            if let Some(seed) = table.get("seed") {
-                chain_table.insert("seed".to_owned(), seed.clone());
-            }
-            if let Some(indices) = table.get("indices") {
-                chain_table.insert("indices".to_owned(), indices.clone());
-            }
+            inject_field(chain_table, "seed", table.get("seed"));
+            inject_field(chain_table, "indices", table.get("indices"));
         }
         _ => {}
+    }
+}
+
+/// `[signers].tvm` / `stellar_fee_bump` are a single secret string.
+fn require_signer_string(name: &str, value: Option<&toml::Value>) -> Result<(), AppError> {
+    match value {
+        None | Some(toml::Value::String(_)) => Ok(()),
+        Some(_) => Err(AppError::config(format!(
+            "[signers].{name} must be a string"
+        ))),
+    }
+}
+
+/// `[signers].stellar` is one `S…` secret or an array of them.
+fn require_signer_string_or_array(name: &str, value: Option<&toml::Value>) -> Result<(), AppError> {
+    match value {
+        None | Some(toml::Value::String(_) | toml::Value::Array(_)) => Ok(()),
+        Some(_) => Err(AppError::config(format!(
+            "[signers].{name} must be a string or array of S… secrets"
+        ))),
     }
 }
 
@@ -133,7 +147,7 @@ fn inject_keeta_seed_and_indices(
 /// # Errors
 ///
 /// Returns an error if environment variable resolution fails, `[signers].xrpl`
-/// is present, or `[signers].keeta` is not a string or table.
+/// is present, or a family signer key has the wrong TOML shape.
 pub(crate) fn preprocess_signers(doc: &mut BTreeMap<String, toml::Value>) -> Result<(), AppError> {
     preprocess_signers_with(doc, |name| std::env::var(name).ok())
 }
@@ -167,6 +181,9 @@ pub(crate) fn preprocess_signers_with(
             "[signers].keeta must be a seed string or a table { seed, indices }",
         ));
     }
+    require_signer_string("tvm", signers.get("tvm"))?;
+    require_signer_string_or_array("stellar", signers.get("stellar"))?;
+    require_signer_string("stellar_fee_bump", signers.get("stellar_fee_bump"))?;
 
     let evm_signers = signers.get("evm").cloned().map(wrap_evm_signers);
     let tvm_signer = signers.get("tvm").cloned();
@@ -506,6 +523,35 @@ indices = [0]
     }
 
     #[test]
+    fn keeta_chain_indices_kept_when_seed_injected() {
+        let toml_str = r#"
+[signers]
+keeta = { seed = "global", indices = [9] }
+
+[chains."keeta:1413829460"]
+indices = [0]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        preprocess_signers(&mut doc).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("keeta:1413829460")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        assert_eq!(
+            chain.get("seed").and_then(toml::Value::as_str),
+            Some("global"),
+            "seed injected"
+        );
+        let first = chain
+            .get("indices")
+            .and_then(toml::Value::as_array)
+            .and_then(|a| a.first())
+            .and_then(toml::Value::as_integer);
+        assert_eq!(first, Some(0), "per-chain indices win");
+    }
+
+    #[test]
     fn keeta_invalid_shape_errors() {
         let toml_str = r#"
 [signers]
@@ -629,6 +675,42 @@ fee_bump = "SLOCALBUMP"
             chain.get("fee_bump").and_then(toml::Value::as_str),
             Some("SLOCALBUMP"),
             "per-chain fee_bump"
+        );
+    }
+
+    #[test]
+    fn tvm_non_string_signer_errors() {
+        let toml_str = r#"
+[signers]
+tvm = { key = "nope" }
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let err = preprocess_signers(&mut doc).unwrap_err();
+        assert!(err.to_string().contains("[signers].tvm"), "got {err}");
+    }
+
+    #[test]
+    fn stellar_non_string_or_array_errors() {
+        let toml_str = r#"
+[signers]
+stellar = { secret = "SNOPE" }
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let err = preprocess_signers(&mut doc).unwrap_err();
+        assert!(err.to_string().contains("[signers].stellar"), "got {err}");
+    }
+
+    #[test]
+    fn stellar_fee_bump_non_string_errors() {
+        let toml_str = r#"
+[signers]
+stellar_fee_bump = ["SNOPE"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let err = preprocess_signers(&mut doc).unwrap_err();
+        assert!(
+            err.to_string().contains("[signers].stellar_fee_bump"),
+            "got {err}"
         );
     }
 }

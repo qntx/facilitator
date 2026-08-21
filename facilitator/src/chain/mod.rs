@@ -63,13 +63,27 @@ pub(crate) fn reject_rpc_key(
     Ok(())
 }
 
-/// TVM/Stellar `rpc` is an optional string URL, not an EVM endpoint array.
+/// TVM/Stellar URL fields are optional strings, not EVM endpoint arrays.
 #[cfg(any(feature = "chain-tvm", feature = "chain-stellar"))]
-pub(crate) fn require_string_rpc(chain_id: &ChainId, value: &toml::Value) -> Result<(), AppError> {
-    match value.get("rpc") {
+pub(crate) fn require_string_url(
+    chain_id: &ChainId,
+    value: &toml::Value,
+    key: &str,
+) -> Result<(), AppError> {
+    match value.get(key) {
         None | Some(toml::Value::String(_)) => Ok(()),
         Some(_) => Err(AppError::config(format!(
-            "[chains.\"{chain_id}\"] `rpc` must be a string URL"
+            "[chains.\"{chain_id}\"] `{key}` must be a string URL"
         ))),
     }
+}
+
+/// Empty/whitespace would override r402 network defaults with a broken endpoint.
+#[cfg(any(feature = "chain-tvm", feature = "chain-stellar"))]
+#[must_use]
+pub(crate) fn nonempty_string(value: Option<String>) -> Option<String> {
+    value.and_then(|s| {
+        let trimmed = s.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    })
 }

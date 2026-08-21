@@ -167,6 +167,55 @@ mod tests {
         assert!(!doc.contains_key("schemes"), "no [[schemes]]");
     }
 
+    #[cfg(not(feature = "chain-keeta"))]
+    #[test]
+    fn generate_default_config_omits_keeta() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
+        assert!(!signers.contains_key("keeta"), "no keeta signer");
+        if let Some(chains) = doc.get("chains").and_then(toml::Value::as_table) {
+            assert!(
+                chains.keys().all(|k| !k.starts_with("keeta:")),
+                "no keeta chain"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "chain-tvm"))]
+    #[test]
+    fn generate_default_config_omits_tvm() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
+        assert!(!signers.contains_key("tvm"), "no tvm signer");
+        if let Some(chains) = doc.get("chains").and_then(toml::Value::as_table) {
+            assert!(
+                chains.keys().all(|k| !k.starts_with("tvm:")),
+                "no tvm chain"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "chain-stellar"))]
+    #[test]
+    fn generate_default_config_omits_stellar() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
+        assert!(!signers.contains_key("stellar"), "no stellar signer");
+        assert!(
+            !signers.contains_key("stellar_fee_bump"),
+            "no stellar_fee_bump"
+        );
+        if let Some(chains) = doc.get("chains").and_then(toml::Value::as_table) {
+            assert!(
+                chains.keys().all(|k| !k.starts_with("stellar:")),
+                "no stellar chain"
+            );
+        }
+    }
+
     #[cfg(feature = "chain-eip155")]
     #[test]
     fn generate_default_config_has_eip155_chain() {
