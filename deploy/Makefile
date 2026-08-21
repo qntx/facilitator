@@ -23,7 +23,7 @@ reload: ## Smart reload (auto-detect which config changed)
 	@$(CTL) reload
 
 .PHONY: update
-update: ## Pull latest Docker images + rolling restart
+update: ## Pull latest Docker images + recreate (stop-then-start)
 	@$(CTL) update
 
 .PHONY: up

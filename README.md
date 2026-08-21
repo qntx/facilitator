@@ -44,11 +44,13 @@ Requires **Rust 1.95**.
 # Using pre-built image
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml ghcr.io/qntx/facilitator
 
-# Or build from source
+# Or build from source (1.0.0 default FEATURES)
 docker build -t facilitator .
-docker build -t facilitator --build-arg FEATURES=chain-eip155,scheme-upto,telemetry .
+docker build -t facilitator --build-arg FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry .
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
 ```
+
+Production stack (Caddy + Watchtower): [`deploy/`](deploy/). One replica; do not scale — see cache note below.
 
 ## API
 
@@ -139,6 +141,8 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | **EVM (EIP-155) batch-settlement** | opt-in | r402 `MemoryChannelStore` is **single-process**. Pin settle to one replica; do not split the store across workers. |
 | **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
 | **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
+
+`SettlementCache` (in-memory, TTL 120 s) is per process. `MemoryChannelStore` exists only if `scheme-batch-settlement` is built. Pin `/settle` to one replica; do not scale or put two facilitators behind one Caddy. Watchtower rolling restart does not overlap two copies of this compose service.
 
 ## Feature Flags
 

@@ -67,6 +67,11 @@ facilitator.qntx.fun {
 	# ── Reverse Proxy ────────────────────────────────────────────────
 	# Docker Compose: use container name "facilitator"
 	# Standalone:     change to "localhost:8080"
+	#
+	# No transport timeout on reverse_proxy. Caddy is unlimited; Axum 30 s
+	# is the process cap on /verify /settle /supported. Do not add a Caddy
+	# timeout unless it is strictly above 30 s + margin.
+	# Protocol surface is those three routes plus process /health. No GET /.
 
 	handle /health {
 		reverse_proxy facilitator:8080

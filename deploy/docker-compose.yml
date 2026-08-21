@@ -17,6 +17,13 @@ services:
       - "127.0.0.1:8080:8080"   # Only bind to loopback — Caddy handles public traffic
     volumes:
       - ./config.toml:/app/config.toml:ro
+    # $VAR in config.toml is resolved from process env. Host export / compose-dir
+    # .env interpolates here; without this block those keys never enter the container.
+    environment:
+      EVM_SIGNER_PRIVATE_KEY: ${EVM_SIGNER_PRIVATE_KEY}
+      SOLANA_SIGNER_PRIVATE_KEY: ${SOLANA_SIGNER_PRIVATE_KEY}
+    # Axum protocol timeout is 30 s. Default 10 s SIGKILL can cut /settle after broadcast.
+    stop_grace_period: 35s
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
       interval: 15s
@@ -26,6 +33,7 @@ services:
     deploy:
       resources:
         limits:
+          # Starting cap. SVM + many EVM chains may need more — measure, don't guess.
           memory: 512M
           cpus: "0.90"
     logging:
@@ -49,8 +57,11 @@ services:
       WATCHTOWER_POLL_INTERVAL: 300
       # Remove old images after update
       WATCHTOWER_CLEANUP: "true"
-      # Rolling restart — wait for new container to be healthy before removing old
-      WATCHTOWER_ROLLING_RESTART: "true"
+      # Go duration. Unitless "35" is 35ns then Docker Stop timeout 0 → SIGKILL.
+      WATCHTOWER_TIMEOUT: "35s"
+      # One replica (container_name). Rolling restart does not overlap two facilitators;
+      # cache split is scale / a second worker behind Caddy, not this flag.
+      WATCHTOWER_ROLLING_RESTART: "false"
     logging:
       driver: json-file
       options:

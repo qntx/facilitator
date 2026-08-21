@@ -206,7 +206,7 @@ cmd_update() {
     info "Pulling latest facilitator image..."
     ${DC} pull facilitator
 
-    info "Rolling restart with latest image..."
+    info "Recreating facilitator with latest image (stop-then-start)..."
     ${DC} up -d --no-deps --force-recreate facilitator
 
     wait_healthy
@@ -524,7 +524,7 @@ cmd_help() {
     echo "  ${BOLD}Lifecycle:${NC}"
     echo "    deploy          Pull latest images + recreate all containers"
     echo "    reload          Smart reload (auto-detect config changes)"
-    echo "    update          Pull latest facilitator image + rolling restart"
+    echo "    update          Pull latest facilitator image + recreate (stop-then-start)"
     echo ""
     echo "  ${BOLD}Observability:${NC}"
     echo "    status          Service dashboard (status, health, versions)"
