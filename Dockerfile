@@ -10,7 +10,7 @@
 #
 # Build:
 #   docker build -t x402-facilitator .
-#   docker build -t x402-facilitator --build-arg FEATURES=chain-eip155,telemetry .
+#   docker build -t x402-facilitator --build-arg FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry .
 #
 # Run:
 #   docker run -p 8080:8080 -v ./config.toml:/app/config.toml x402-facilitator
@@ -34,7 +34,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ------------------ Stage 3: Build dependencies + binary --------------------
 FROM chef AS builder
 
-ARG FEATURES=telemetry,chain-eip155
+ARG FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry
 
 COPY --from=planner /src/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

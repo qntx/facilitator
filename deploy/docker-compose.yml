@@ -26,6 +26,7 @@ services:
     deploy:
       resources:
         limits:
+          # Starting cap. SVM + many EVM chains may need more — measure, don't guess.
           memory: 512M
           cpus: "0.90"
     logging:
@@ -49,8 +50,9 @@ services:
       WATCHTOWER_POLL_INTERVAL: 300
       # Remove old images after update
       WATCHTOWER_CLEANUP: "true"
-      # Rolling restart — wait for new container to be healthy before removing old
-      WATCHTOWER_ROLLING_RESTART: "true"
+      # Stop-then-start. Rolling restart overlaps old+new containers behind Caddy
+      # and splits in-memory SettlementCache / MemoryChannelStore (duplicate settle).
+      WATCHTOWER_ROLLING_RESTART: "false"
     logging:
       driver: json-file
       options:

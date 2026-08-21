@@ -1,15 +1,21 @@
-# x402 Facilitator Configuration
-# https://qntx.fun
+# x402 Facilitator Configuration (1.0.0)
+# https://qntx.org
 #
 # SETUP:
 #   cp config.example.toml config.toml
 #   chmod 600 config.toml
-#   nano config.toml   # Fill in your signer private keys
+#   nano config.toml   # Fill in signer keys, or keep $VAR and export them
 #
 # Key concepts:
-#   - [signers]  — configure private keys ONCE, shared across all chains
-#   - [chains.*] — only RPC endpoints needed per chain
-#   - Schemes are compiled in (EVM exact + Solana exact this build). Do not add [[schemes]].
+#   - [signers]  — private keys ONCE, shared across all chains of that family
+#   - [chains.*] — RPC (and optional per-chain overrides) per CAIP-2 id
+#   - Schemes are Cargo features on the 1.0.0 image:
+#       chain-eip155 + scheme-upto  → EVM exact + upto
+#       chain-solana                → Solana exact
+#     Opt-in at build: scheme-batch-settlement. This process does not host auth-capture.
+#     Do not add [[schemes]] — that key is a startup error.
+#   - Env var references: "$VAR" or "${VAR}" are resolved at startup.
+#     Literals (0x… / base58) also work.
 
 host = "0.0.0.0"
 port = 8080
@@ -24,13 +30,15 @@ log_level = "info"
 # directly in the chain table.
 
 [signers]
-evm = ["0xYOUR_EVM_PRIVATE_KEY_HERE"]          # hex, 0x-prefixed
-solana = "YOUR_SOLANA_KEYPAIR_BASE58_HERE"     # base58, 64-byte keypair
+evm = ["$EVM_SIGNER_PRIVATE_KEY"]          # hex, 0x-prefixed
+solana = "$SOLANA_SIGNER_PRIVATE_KEY"      # base58, 64-byte keypair
 
 # EIP-155 (EVM) Chains — Mainnet
 #
 # Key format: "eip155:<chain_id>"
-# Only RPC config needed — signers injected from [signers] above.
+# rpc is an array of { http, rate_limit? }. Signers inject from [signers] unless
+# the chain table sets `signers`.
+# receipt_timeout_secs defaults to 20 (must stay below the 30 s HTTP timeout).
 
 # Ethereum (chain 1)
 [chains."eip155:1"]
@@ -133,6 +141,7 @@ rpc = [{ http = "https://ethereum-sepolia-rpc.publicnode.com" }]
 # Base Sepolia (chain 84532)
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
+receipt_timeout_secs = 20
 
 # Optimism Sepolia (chain 11155420)
 [chains."eip155:11155420"]
@@ -205,6 +214,10 @@ rpc = [{ http = "https://rpc.apothem.network" }]
 # Solana Chains
 #
 # Key format: "solana:<truncated_genesis_hash>"
+# rpc is a string (not an EVM endpoint array). Optional: pubsub,
+# max_compute_unit_limit (200000), max_compute_unit_price (1000000),
+# enable_smart_wallet_verification (false), allow_additional_instructions (true),
+# max_instruction_count (6).
 
 # Solana Mainnet
 [chains."solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]

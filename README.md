@@ -44,11 +44,13 @@ Requires **Rust 1.95**.
 # Using pre-built image
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml ghcr.io/qntx/facilitator
 
-# Or build from source
+# Or build from source (1.0.0 default FEATURES)
 docker build -t facilitator .
-docker build -t facilitator --build-arg FEATURES=chain-eip155,scheme-upto,telemetry .
+docker build -t facilitator --build-arg FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry .
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
 ```
+
+Production stack (Caddy + Watchtower): [`deploy/`](deploy/). Watchtower rolling restart is **off** — see cache note below.
 
 ## API
 
@@ -139,6 +141,8 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | **EVM (EIP-155) batch-settlement** | opt-in | r402 `MemoryChannelStore` is **single-process**. Pin settle to one replica; do not split the store across workers. |
 | **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
 | **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
+
+`SettlementCache` (in-memory, TTL 120 s) and `MemoryChannelStore` live in one process. Two overlapping containers behind Caddy split both (duplicate `/settle`). `deploy/docker-compose.yml` sets `WATCHTOWER_ROLLING_RESTART=false` so image bumps stop-then-start (brief blip). Do not turn rolling restart on.
 
 ## Feature Flags
 

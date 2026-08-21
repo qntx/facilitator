@@ -22,7 +22,7 @@ deploy:
 reload:
     if command -v fctl >/dev/null 2>&1; then fctl reload; else bash fctl reload; fi
 
-# Pull latest Docker images and perform a rolling restart.
+# Pull latest Docker images and recreate the facilitator (stop-then-start).
 update:
     if command -v fctl >/dev/null 2>&1; then fctl update; else bash fctl update; fi
 
