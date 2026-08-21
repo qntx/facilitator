@@ -57,8 +57,8 @@ services:
       WATCHTOWER_POLL_INTERVAL: 300
       # Remove old images after update
       WATCHTOWER_CLEANUP: "true"
-      # Match facilitator stop_grace_period so SIGTERM can finish the 30 s HTTP budget.
-      WATCHTOWER_TIMEOUT: "35"
+      # Go duration. Unitless "35" is 35ns then Docker Stop timeout 0 → SIGKILL.
+      WATCHTOWER_TIMEOUT: "35s"
       # One replica (container_name). Rolling restart does not overlap two facilitators;
       # cache split is scale / a second worker behind Caddy, not this flag.
       WATCHTOWER_ROLLING_RESTART: "false"

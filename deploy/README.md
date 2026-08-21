@@ -20,7 +20,7 @@ flowchart LR
 
 - **Caddy** — Auto-HTTPS, rate limiting, security headers, request filtering. `reverse_proxy facilitator:8080` has **no** transport timeout; Axum **30 s** is the process cap on `/verify`, `/settle`, and `/supported`.
 - **Facilitator** — x402 V2 `POST /verify`, `POST /settle`, `GET /supported`, plus process `GET /health`. Signer keys stay in `config.toml` or in container env (`EVM_SIGNER_PRIVATE_KEY` / `SOLANA_SIGNER_PRIVATE_KEY`). `stop_grace_period: 35s` so SIGTERM can finish the 30 s HTTP budget.
-- **Watchtower** — Auto-pulls new images every 5 min. `WATCHTOWER_ROLLING_RESTART=false`, `WATCHTOWER_TIMEOUT=35`. Rolling restart does **not** overlap two facilitators; with one labeled container it is the same stop-then-start. Do **not** scale.
+- **Watchtower** — Auto-pulls new images every 5 min. `WATCHTOWER_ROLLING_RESTART=false`, `WATCHTOWER_TIMEOUT=35s` (Go duration; unit required). Rolling restart does **not** overlap two facilitators; with one labeled container it is the same stop-then-start. Do **not** scale.
 
 ## In-memory cache (single worker)
 
