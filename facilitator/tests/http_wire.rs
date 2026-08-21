@@ -63,8 +63,13 @@ impl Facilitator for StubFacilitator {
     fn supported(
         &self,
     ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
-        std::future::ready(Ok(SupportedResponse::new()
-            .with_kinds(vec![SupportedPaymentKind::new(2, "exact", "eip155:84532")])))
+        std::future::ready(Ok(SupportedResponse::new().with_kinds(vec![
+            SupportedPaymentKind::new(2, "exact", "eip155:84532"),
+            SupportedPaymentKind::new(2, "exact", "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")
+                .with_extra(json!({
+                    "feePayer": "CKPKJWNdJEqa81x7CkZ14BVPiY6y16Sxs7owznqtWYp5"
+                })),
+        ])))
     }
 }
 
@@ -293,6 +298,28 @@ async fn supported_kinds_are_v2_exact() {
     assert!(!kinds.is_empty(), "stub advertises exact");
     assert_eq!(kinds[0]["x402Version"], 2, "v2");
     assert_eq!(kinds[0]["scheme"], "exact", "exact");
+}
+
+#[tokio::test]
+async fn supported_preserves_solana_network_and_fee_payer_extra() {
+    let req = Request::builder()
+        .method("GET")
+        .uri("/supported")
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(stub_app(), req).await;
+    assert_eq!(status, StatusCode::OK, "always 200");
+    let kinds = json["kinds"].as_array().expect("kinds");
+    let solana = kinds
+        .iter()
+        .find(|k| k["network"] == "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")
+        .expect("solana CAIP-2 kind");
+    assert_eq!(solana["scheme"], "exact", "exact");
+    assert_eq!(solana["x402Version"], 2, "v2");
+    assert_eq!(
+        solana["extra"]["feePayer"], "CKPKJWNdJEqa81x7CkZ14BVPiY6y16Sxs7owznqtWYp5",
+        "clients need extra.feePayer to build the tx"
+    );
 }
 
 #[tokio::test]

@@ -17,8 +17,9 @@ name = "facilitator"
 path = "src/main.rs"
 
 [features]
-default = ["telemetry", "chain-eip155"]
+default = ["telemetry", "chain-eip155", "chain-solana"]
 chain-eip155 = ["dep:r402-evm", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
+chain-solana = ["dep:r402-solana", "dep:solana-keypair", "dep:bs58"]
 telemetry = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -26,6 +27,7 @@ telemetry = [
     "dep:opentelemetry-semantic-conventions",
     "dep:tracing-opentelemetry",
     "r402-evm?/telemetry",
+    "r402-solana?/telemetry",
 ]
 
 [dependencies]
@@ -49,9 +51,12 @@ opentelemetry-otlp = { workspace = true, optional = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 r402-evm = { workspace = true, optional = true }
+r402-solana = { workspace = true, optional = true }
 alloy-network = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
+solana-keypair = { workspace = true, optional = true }
+bs58 = { workspace = true, optional = true }
 
 [dev-dependencies]
 axum = { workspace = true }

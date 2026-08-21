@@ -4,7 +4,7 @@
 # Key concepts:
 #   - [signers]  — configure private keys ONCE, shared across all chains
 #   - [chains.*] — only RPC endpoints needed per chain
-#   - Schemes are compiled in (EVM exact this build). Do not add [[schemes]].
+#   - Schemes are compiled in (EVM exact + Solana exact this build). Do not add [[schemes]].
 #   - Env var references: "$VAR" or "${VAR}" are resolved at startup
 
 host = "0.0.0.0"
@@ -16,12 +16,14 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides: add `signers = [...]` directly in the chain table.
+# Per-chain overrides: add `signers = [...]` (EVM) or `signer = "..."` (Solana)
+# directly in the chain table.
 #
 # Use environment variable references ($VAR or ${VAR}) for secrets.
 
 [signers]
 evm = ["$EVM_SIGNER_PRIVATE_KEY"]          # hex, 0x-prefixed
+solana = "$SOLANA_SIGNER_PRIVATE_KEY"       # base58, 64-byte keypair
 
 # EIP-155 (EVM) Chains
 #
@@ -38,3 +40,16 @@ rpc = [{ http = "https://mainnet.base.org" }]
 
 [chains."eip155:1"]
 rpc = [{ http = "https://ethereum-rpc.publicnode.com" }]
+
+# Solana Chains
+#
+# Key format: "solana:<truncated_genesis_hash>"
+# rpc is a string. Optional: pubsub, max_compute_unit_limit (200000),
+# max_compute_unit_price (1000000), enable_smart_wallet_verification (false),
+# allow_additional_instructions (true), max_instruction_count (6).
+
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+
+[chains."solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+rpc = "https://api.mainnet-beta.solana.com"

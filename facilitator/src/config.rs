@@ -8,12 +8,13 @@ use std::str::FromStr;
 use r402_core::chain::ChainId;
 use serde::Deserialize;
 
-use crate::chain::family_feature;
-use crate::error::AppError;
-use crate::signers;
-
 #[cfg(feature = "chain-eip155")]
 use crate::chain::eip155::Eip155ChainConfig;
+use crate::chain::family_feature;
+#[cfg(feature = "chain-solana")]
+use crate::chain::solana::SolanaChainConfig;
+use crate::error::AppError;
+use crate::signers;
 
 /// Server configuration combining host/port and chain configs.
 #[derive(Debug, Clone)]
@@ -34,6 +35,9 @@ pub(crate) struct ChainsConfig {
     /// EIP-155 chains, in TOML key order.
     #[cfg(feature = "chain-eip155")]
     eip155: Vec<Eip155ChainConfig>,
+    /// Solana chains, in TOML key order.
+    #[cfg(feature = "chain-solana")]
+    solana: Vec<SolanaChainConfig>,
 }
 
 impl ChainsConfig {
@@ -42,6 +46,13 @@ impl ChainsConfig {
     #[must_use]
     pub(crate) fn eip155(&self) -> &[Eip155ChainConfig] {
         &self.eip155
+    }
+
+    /// Solana chain configs.
+    #[cfg(feature = "chain-solana")]
+    #[must_use]
+    pub(crate) fn solana(&self) -> &[SolanaChainConfig] {
+        &self.solana
     }
 }
 
@@ -164,6 +175,8 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
 
     #[cfg(feature = "chain-eip155")]
     let mut eip155 = Vec::new();
+    #[cfg(feature = "chain-solana")]
+    let mut solana = Vec::new();
 
     for (key, value) in raw {
         let chain_id = ChainId::from_str(&key)
@@ -171,6 +184,8 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
         match chain_id.namespace() {
             #[cfg(feature = "chain-eip155")]
             "eip155" => eip155.push(Eip155ChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-solana")]
+            "solana" => solana.push(SolanaChainConfig::from_toml(&chain_id, value)?),
             other => {
                 if let Some(feature) = family_feature(other) {
                     return Err(AppError::config(format!(
@@ -187,6 +202,8 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
     Ok(ChainsConfig {
         #[cfg(feature = "chain-eip155")]
         eip155,
+        #[cfg(feature = "chain-solana")]
+        solana,
     })
 }
 
@@ -228,6 +245,7 @@ rpc = "https://example.com"
         );
     }
 
+    #[cfg(not(feature = "chain-solana"))]
     #[test]
     fn parse_rejects_compiled_out_solana() {
         let raw = r#"
@@ -238,6 +256,81 @@ rpc = "https://api.devnet.solana.com"
         assert!(
             err.to_string().contains("compiled-out family 'solana'"),
             "got {err}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_compiled_out_tron() {
+        let raw = r#"
+[chains."tron:0x2b6653dc"]
+rpc = "https://api.trongrid.io"
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'tron'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-solana")]
+    #[test]
+    fn parse_solana_minimal() {
+        let raw = r#"
+host = "127.0.0.1"
+[signers]
+solana = "base58key"
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().solana().first().expect("one solana chain");
+        assert_eq!(
+            chain.chain_id().to_string(),
+            "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            "devnet CAIP-2"
+        );
+        assert_eq!(chain.inner.rpc, "https://api.devnet.solana.com", "rpc");
+        assert_eq!(chain.inner.signer.as_deref(), Some("base58key"), "injected");
+        assert_eq!(
+            chain.inner.max_compute_unit_limit, 200_000,
+            "default cu limit"
+        );
+        assert_eq!(
+            chain.inner.max_compute_unit_price, 1_000_000,
+            "default cu price"
+        );
+        assert!(
+            !chain.inner.enable_smart_wallet_verification,
+            "default smart wallet off"
+        );
+        assert!(
+            chain.inner.allow_additional_instructions,
+            "default extra ix on"
+        );
+        assert_eq!(chain.inner.max_instruction_count, 6, "default ix cap");
+    }
+
+    #[cfg(feature = "chain-solana")]
+    #[test]
+    fn parse_solana_scheme_fields_map_to_camel_case_json() {
+        let raw = r#"
+[signers]
+solana = "base58key"
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+enable_smart_wallet_verification = true
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().solana().first().expect("one solana chain");
+        assert!(
+            chain.inner.enable_smart_wallet_verification,
+            "TOML snake_case"
+        );
+        let json = chain.scheme_json().unwrap();
+        assert_eq!(
+            json.get("enableSmartWalletVerification"),
+            Some(&serde_json::json!(true)),
+            "camelCase JSON for r402"
         );
     }
 

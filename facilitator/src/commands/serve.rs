@@ -39,7 +39,7 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
         .with_log_level(config.log_level())
         .register();
 
-    let registry = build_registry(&config)?;
+    let registry = build_registry(&config).await?;
     let facilitator = HookedFacilitator::new(registry);
     let axum_state: FacilitatorState = Arc::new(facilitator);
 
@@ -63,22 +63,45 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
 
 /// Construct chain handles and register compiled schemes.
 #[cfg_attr(
-    not(feature = "chain-eip155"),
+    not(any(feature = "chain-eip155", feature = "chain-solana")),
     allow(unused_variables, reason = "no compiled chain families in this build")
 )]
-fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppError> {
+#[cfg_attr(
+    not(feature = "chain-solana"),
+    allow(
+        clippy::unused_async,
+        reason = "async only because SolanaChainProvider::new awaits optional pubsub"
+    )
+)]
+async fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppError> {
     let mut registry = SchemeRegistry::new();
 
     #[cfg(feature = "chain-eip155")]
     {
-        use crate::chain::eip155::build_eip155_handle;
         use r402_evm::Eip155Exact;
+
+        use crate::chain::eip155::build_eip155_handle;
 
         for chain in config.chains().eip155() {
             let handle = build_eip155_handle(chain)?;
             registry
                 .register(&Eip155Exact, &handle, None)
                 .map_err(|e| AppError::chain(format!("failed to register eip155 exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-solana")]
+    {
+        use r402_solana::SolanaExact;
+
+        use crate::chain::solana::build_solana_handle;
+
+        for chain in config.chains().solana() {
+            let handle = build_solana_handle(chain).await?;
+            let json = chain.scheme_json()?;
+            registry
+                .register(&SolanaExact, &handle, Some(json))
+                .map_err(|e| AppError::chain(format!("failed to register solana exact: {e}")))?;
         }
     }
 

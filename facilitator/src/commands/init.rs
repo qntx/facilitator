@@ -55,8 +55,8 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides are still possible (add `signers` to the
-# individual chain table).
+# Per-chain overrides are still possible (add `signers` / `signer` to
+# the individual chain table).
 #
 # Use environment variable references ($VAR or ${VAR}) for secrets.
 
@@ -67,6 +67,12 @@ log_level = "info"
     #[cfg(feature = "chain-eip155")]
     config.push_str(
         r#"evm = ["$EVM_SIGNER_PRIVATE_KEY"]       # hex, 0x-prefixed
+"#,
+    );
+
+    #[cfg(feature = "chain-solana")]
+    config.push_str(
+        r#"solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
 "#,
     );
 
@@ -82,6 +88,19 @@ log_level = "info"
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
 receipt_timeout_secs = 20
+"#,
+    );
+
+    #[cfg(feature = "chain-solana")]
+    config.push_str(
+        r#"
+# Solana chains
+#
+# Key format: "solana:<genesis_hash>"
+# rpc is a string (not an EVM endpoint array).
+
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
 "#,
     );
 
@@ -118,5 +137,19 @@ mod tests {
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
         let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
         assert!(chains.contains_key("eip155:84532"), "base sepolia present");
+    }
+
+    #[cfg(feature = "chain-solana")]
+    #[test]
+    fn generate_default_config_has_solana_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
+        assert!(signers.contains_key("solana"), "solana signer");
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(
+            chains.contains_key("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"),
+            "devnet present"
+        );
     }
 }

@@ -21,7 +21,7 @@
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402) **0.17.1**. This 1.0.0 process ships **EIP-155 exact** only; Solana and extra EVM schemes land in later PRs. See [Security](SECURITY.md) before using in production.
+Built on [r402](https://github.com/qntx/r402) **0.17.1**. This 1.0.0 process ships **EIP-155 exact** and **Solana exact**; extra EVM schemes land in later PRs. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -105,13 +105,17 @@ log_level = "info"
 
 [signers]
 evm = ["$EVM_SIGNER_PRIVATE_KEY"]       # hex, 0x-prefixed
+solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
 
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
 receipt_timeout_secs = 20
+
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
 ```
 
-Do **not** add `[[schemes]]`. Schemes are compile-time (`chain-eip155` registers EVM exact). A `schemes` key is a startup error.
+Do **not** add `[[schemes]]`. Schemes are compile-time (`chain-eip155` registers EVM exact, `chain-solana` registers Solana exact). A `schemes` key is a startup error.
 
 Empty `[chains]`, an unknown CAIP-2 namespace, or a family not compiled into the binary is a startup error.
 
@@ -131,17 +135,18 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Family | This build | Notes |
 | --- | --- | --- |
 | **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
-| **Solana (SVM)** | later PR | Not compiled in 1.0.0-pr1 default features |
+| **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
 
 ## Feature Flags
 
 | Feature | Default | Description |
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
+| `chain-solana` | ✓ | Solana exact via [r402-solana](https://crates.io/crates/r402-solana) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
 
 ```bash
-cargo install facilitator --no-default-features --features chain-eip155
+cargo install facilitator --no-default-features --features chain-eip155,chain-solana
 ```
 
 ## Security
