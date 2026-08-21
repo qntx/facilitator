@@ -4,7 +4,8 @@
 # Key concepts:
 #   - [signers]  — configure private keys ONCE, shared across all chains
 #   - [chains.*] — only RPC endpoints needed per chain
-#   - Schemes are compiled in (EVM exact + Solana exact this build). Do not add [[schemes]].
+#   - Schemes are Cargo features (EVM exact, Solana exact, scheme-upto; opt-in scheme-batch-settlement).
+#     Do not add [[schemes]]. This process does not host auth-capture.
 #   - Env var references: "$VAR" or "${VAR}" are resolved at startup
 
 host = "0.0.0.0"

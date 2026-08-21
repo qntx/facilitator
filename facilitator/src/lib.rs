@@ -2,11 +2,11 @@
 //!
 //! Composes r402 in-process scheme facilitators and serves spec §7 routes.
 
-// Dev-dependencies are linked into the lib test target; they are consumed
-// by `tests/http_wire.rs`, not by unit tests in this crate.
-#[cfg(test)]
+// Dev-dependencies are linked into the lib test target. With `chain-eip155`
+// they are used by GET /supported unit tests; without it, silence unused_crate_dependencies.
+#[cfg(all(test, not(feature = "chain-eip155")))]
 use http_body_util as _;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "chain-eip155")))]
 use tower as _;
 
 mod chain;
