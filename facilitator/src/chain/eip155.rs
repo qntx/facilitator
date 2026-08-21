@@ -14,10 +14,7 @@ use url::Url;
 
 use crate::error::AppError;
 
-/// Local adapter so `SchemeRegistry::register` can take `&Eip155Handle`.
-///
-/// r402-evm implements `SchemeBuilder` for owned `P` (including `Arc<_>`),
-/// not `&Eip155ChainProvider`. A local newtype is the orphan-legal cover.
+/// Local handle: r402-evm has no `SchemeBuilder<&Eip155ChainProvider>`, which `register` requires.
 #[derive(Debug)]
 pub(crate) struct Eip155Handle(pub Arc<Eip155ChainProvider>);
 

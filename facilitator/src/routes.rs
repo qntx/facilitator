@@ -147,7 +147,7 @@ fn request_json<T: serde::Serialize>(request: &T) -> serde_json::Value {
     serde_json::to_value(request).unwrap_or(serde_json::Value::Null)
 }
 
-/// `scheme_slug` is private in r402; missing/`!=2` version vs bad `accepted`.
+/// Version `2` with a bad `accepted` is `invalid_payload`; anything else is `invalid_x402_version`.
 fn envelope_reason(json: &serde_json::Value) -> ErrorReason {
     if json.get("x402Version").and_then(serde_json::Value::as_u64) == Some(2) {
         ErrorReason::InvalidPayload

@@ -85,7 +85,7 @@ fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppE
     Ok(registry)
 }
 
-/// Build the Axum router with process middleware (timeouts live on routes).
+/// Process middleware only. 30s/5s timeouts are inside `routes()` so health is not bound to the protocol budget.
 fn build_router(state: FacilitatorState) -> Router {
     Router::new()
         .merge(routes::routes().with_state(state))

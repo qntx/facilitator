@@ -3231,6 +3231,8 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "r402-core"
 version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b8cd0b98b14443c404e19cb5f3ba11f5b1914c88dd65113cc83804092152ae4"
 dependencies = [
  "base64 0.23.1",
  "compact_str",
@@ -3247,6 +3249,8 @@ dependencies = [
 [[package]]
 name = "r402-evm"
 version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a030be093f11025ebc8d2103b61f8158f041617c7fa2cf3650c961624f574b3b"
 dependencies = [
  "alloy-contract",
  "alloy-network",
