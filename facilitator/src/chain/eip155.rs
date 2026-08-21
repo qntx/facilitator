@@ -6,9 +6,9 @@ use alloy_network::EthereumWallet;
 use alloy_signer_local::PrivateKeySigner;
 use r402_core::chain::{ChainId, ChainProvider};
 use r402_core::facilitator::DynFacilitator;
-use r402_core::scheme::SchemeBuilder;
-use r402_evm::Eip155Exact;
+use r402_core::scheme::{SchemeBuilder, SchemeId, SchemeRegistry};
 use r402_evm::chain::{Eip155ChainProvider, Eip155ChainReference};
+use r402_evm::{Eip155BatchSettlement, Eip155Exact, Eip155Upto};
 use serde::Deserialize;
 use url::Url;
 
@@ -36,6 +36,74 @@ impl SchemeBuilder<&Eip155Handle> for Eip155Exact {
     ) -> Result<Box<dyn DynFacilitator>, Box<dyn std::error::Error + Send + Sync>> {
         SchemeBuilder::<Arc<Eip155ChainProvider>>::build(self, Arc::clone(&provider.0), config)
     }
+}
+
+impl SchemeBuilder<&Eip155Handle> for Eip155Upto {
+    fn build(
+        &self,
+        provider: &Eip155Handle,
+        config: Option<serde_json::Value>,
+    ) -> Result<Box<dyn DynFacilitator>, Box<dyn std::error::Error + Send + Sync>> {
+        SchemeBuilder::<Arc<Eip155ChainProvider>>::build(self, Arc::clone(&provider.0), config)
+    }
+}
+
+impl SchemeBuilder<&Eip155Handle> for Eip155BatchSettlement {
+    fn build(
+        &self,
+        provider: &Eip155Handle,
+        config: Option<serde_json::Value>,
+    ) -> Result<Box<dyn DynFacilitator>, Box<dyn std::error::Error + Send + Sync>> {
+        SchemeBuilder::<Arc<Eip155ChainProvider>>::build(self, Arc::clone(&provider.0), config)
+    }
+}
+
+/// Scheme names `register_eip155_schemes` registers for each EIP-155 chain.
+///
+/// Extra schemes are registration-only Cargo features; auth-capture is never listed.
+#[cfg(test)]
+#[must_use]
+fn eip155_registered_scheme_names() -> Vec<&'static str> {
+    let mut names = vec![Eip155Exact.scheme()];
+    #[cfg(feature = "scheme-upto")]
+    names.push(Eip155Upto.scheme());
+    #[cfg(feature = "scheme-batch-settlement")]
+    names.push(Eip155BatchSettlement.scheme());
+    names
+}
+
+/// Register compiled EVM schemes for one chain handle.
+///
+/// # Errors
+///
+/// Returns an error if a scheme blueprint fails to build.
+pub(crate) fn register_eip155_schemes(
+    registry: &mut SchemeRegistry,
+    handle: &Eip155Handle,
+) -> Result<(), AppError> {
+    registry.register(&Eip155Exact, handle, None).map_err(|e| {
+        AppError::chain(format!(
+            "failed to register eip155 {}: {e}",
+            Eip155Exact.scheme()
+        ))
+    })?;
+    #[cfg(feature = "scheme-upto")]
+    registry.register(&Eip155Upto, handle, None).map_err(|e| {
+        AppError::chain(format!(
+            "failed to register eip155 {}: {e}",
+            Eip155Upto.scheme()
+        ))
+    })?;
+    #[cfg(feature = "scheme-batch-settlement")]
+    registry
+        .register(&Eip155BatchSettlement, handle, None)
+        .map_err(|e| {
+            AppError::chain(format!(
+                "failed to register eip155 {}: {e}",
+                Eip155BatchSettlement.scheme()
+            ))
+        })?;
+    Ok(())
 }
 
 /// Single RPC endpoint entry for EVM chains.
@@ -173,4 +241,111 @@ pub(crate) fn build_eip155_handle(config: &Eip155ChainConfig) -> Result<Eip155Ha
     .map_err(|e| AppError::chain(format!("EVM provider init failed: {e}")))?;
 
     Ok(Eip155Handle(Arc::new(provider)))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use super::*;
+    use crate::routes::{self, FacilitatorState};
+
+    /// Anvil account #0 — never used on-chain; `supported` is local.
+    const TEST_SIGNER: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    fn test_handle() -> Eip155Handle {
+        let config = Eip155ChainConfig {
+            chain_reference: Eip155ChainReference::new(84532),
+            inner: Eip155ChainConfigInner {
+                rpc: vec![Eip155RpcEndpoint {
+                    http: "http://127.0.0.1:9".to_owned(),
+                    rate_limit: None,
+                }],
+                signers: vec![TEST_SIGNER.to_owned()],
+                eip1559: true,
+                flashblocks: false,
+                receipt_timeout_secs: 20,
+            },
+        };
+        build_eip155_handle(&config).expect("test Eip155Handle")
+    }
+
+    #[test]
+    fn registered_scheme_names_match_official_ts_hosting() {
+        let names = eip155_registered_scheme_names();
+        assert!(names.contains(&"exact"), "exact is always registered");
+        assert!(
+            !names.contains(&"auth-capture"),
+            "auth-capture is not hosted"
+        );
+        #[cfg(feature = "scheme-upto")]
+        assert!(names.contains(&"upto"), "scheme-upto registers upto");
+        #[cfg(not(feature = "scheme-upto"))]
+        assert!(!names.contains(&"upto"), "scheme-upto off");
+        #[cfg(feature = "scheme-batch-settlement")]
+        assert!(
+            names.contains(&"batch-settlement"),
+            "scheme-batch-settlement registers batch-settlement"
+        );
+        #[cfg(not(feature = "scheme-batch-settlement"))]
+        assert!(
+            !names.contains(&"batch-settlement"),
+            "scheme-batch-settlement off"
+        );
+    }
+
+    #[tokio::test]
+    async fn http_supported_matches_registered_schemes() {
+        let handle = test_handle();
+        let mut registry = SchemeRegistry::new();
+        register_eip155_schemes(&mut registry, &handle).expect("register");
+        let state: FacilitatorState = Arc::new(registry);
+        let app = routes::routes().with_state(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/supported")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK, "GET /supported is 200");
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("body")
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        let kinds = json
+            .get("kinds")
+            .and_then(serde_json::Value::as_array)
+            .expect("kinds");
+        let mut got: Vec<&str> = kinds
+            .iter()
+            .map(|kind| {
+                kind.get("scheme")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("scheme")
+            })
+            .collect();
+        got.sort_unstable();
+        let mut expected = eip155_registered_scheme_names();
+        expected.sort_unstable();
+        assert_eq!(got, expected, "GET /supported schemes");
+        assert!(!got.contains(&"auth-capture"), "auth-capture is not hosted");
+        assert!(
+            kinds
+                .iter()
+                .all(|kind| kind.get("x402Version").and_then(serde_json::Value::as_u64) == Some(2)),
+            "kinds are v2"
+        );
+        #[cfg(feature = "scheme-upto")]
+        assert!(got.contains(&"upto"), "/supported includes upto");
+    }
 }

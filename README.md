@@ -21,7 +21,7 @@
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402) **0.17.1**. This 1.0.0 process ships **EIP-155 exact** and **Solana exact**; extra EVM schemes land in later PRs. See [Security](SECURITY.md) before using in production.
+Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features host EIP-155 **exact** and **upto**, plus **Solana exact**. `batch-settlement` is opt-in. This process does **not** host `auth-capture`. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -46,7 +46,7 @@ docker run -p 8080:8080 -v ./config.toml:/app/config.toml ghcr.io/qntx/facilitat
 
 # Or build from source
 docker build -t facilitator .
-docker build -t facilitator --build-arg FEATURES=chain-eip155,telemetry .
+docker build -t facilitator --build-arg FEATURES=chain-eip155,scheme-upto,telemetry .
 docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
 ```
 
@@ -115,7 +115,7 @@ receipt_timeout_secs = 20
 rpc = "https://api.devnet.solana.com"
 ```
 
-Do **not** add `[[schemes]]`. Schemes are compile-time (`chain-eip155` registers EVM exact, `chain-solana` registers Solana exact). A `schemes` key is a startup error.
+Do **not** add `[[schemes]]`. Schemes are compile-time (`chain-eip155` registers EVM exact; `scheme-upto` / `scheme-batch-settlement` register those schemes; `chain-solana` registers Solana exact). A `schemes` key is a startup error. This process does not host `auth-capture`.
 
 Empty `[chains]`, an unknown CAIP-2 namespace, or a family not compiled into the binary is a startup error.
 
@@ -135,6 +135,9 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Family | This build | Notes |
 | --- | --- | --- |
 | **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
+| **EVM (EIP-155) upto** | default (`scheme-upto`) | Permit2 usage-based; official TS `UptoEvmScheme` |
+| **EVM (EIP-155) batch-settlement** | opt-in | r402 `MemoryChannelStore` is **single-process**. Pin settle to one replica; do not split the store across workers. |
+| **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
 | **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
 
 ## Feature Flags
@@ -143,10 +146,12 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
 | `chain-solana` | ✓ | Solana exact via [r402-solana](https://crates.io/crates/r402-solana) 0.17.1 |
+| `scheme-upto` | ✓ | Register EVM `upto`. Requires `chain-eip155`. Registration-only (does not compile r402-evm modules out). |
+| `scheme-batch-settlement` | | Register EVM `batch-settlement`. Requires `chain-eip155`. `MemoryChannelStore` is in-memory per process. |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
 
 ```bash
-cargo install facilitator --no-default-features --features chain-eip155,chain-solana
+cargo install facilitator --no-default-features --features chain-eip155,chain-solana,scheme-upto
 ```
 
 ## Security

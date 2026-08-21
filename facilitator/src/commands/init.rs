@@ -83,7 +83,8 @@ log_level = "info"
 #
 # Key format: "eip155:<chain_id>"
 # Only RPC config is needed; signers are injected from [signers] above.
-# Schemes are compiled in (exact); do not add [[schemes]].
+# Schemes are Cargo features (exact; scheme-upto; scheme-batch-settlement).
+# Do not add [[schemes]]. This process does not host auth-capture.
 
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]

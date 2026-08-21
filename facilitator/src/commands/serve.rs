@@ -78,15 +78,11 @@ async fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry
 
     #[cfg(feature = "chain-eip155")]
     {
-        use r402_evm::Eip155Exact;
-
-        use crate::chain::eip155::build_eip155_handle;
+        use crate::chain::eip155::{build_eip155_handle, register_eip155_schemes};
 
         for chain in config.chains().eip155() {
             let handle = build_eip155_handle(chain)?;
-            registry
-                .register(&Eip155Exact, &handle, None)
-                .map_err(|e| AppError::chain(format!("failed to register eip155 exact: {e}")))?;
+            register_eip155_schemes(&mut registry, &handle)?;
         }
     }
 

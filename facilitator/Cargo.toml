@@ -17,9 +17,12 @@ name = "facilitator"
 path = "src/main.rs"
 
 [features]
-default = ["telemetry", "chain-eip155", "chain-solana"]
+default = ["telemetry", "chain-eip155", "chain-solana", "scheme-upto"]
 chain-eip155 = ["dep:r402-evm", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
 chain-solana = ["dep:r402-solana", "dep:solana-keypair", "dep:bs58"]
+# Registration-only: r402-evm always compiles upto / batch_settlement with `facilitator`.
+scheme-upto = ["chain-eip155"]
+scheme-batch-settlement = ["chain-eip155"]
 telemetry = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
