@@ -70,6 +70,24 @@ log_level = "info"
 "#,
     );
 
+    #[cfg(feature = "chain-keeta")]
+    config.push_str(
+        r#"keeta = { seed = "$KEETA_SEED", indices = [0] }  # hex or standard-base64 32-byte seed
+"#,
+    );
+
+    #[cfg(feature = "chain-tvm")]
+    config.push_str(
+        r#"tvm = "$TVM_SIGNER_PRIVATE_KEY"         # hex or base64 32- or 64-byte
+"#,
+    );
+
+    #[cfg(feature = "chain-stellar")]
+    config.push_str(
+        r#"stellar = ["$STELLAR_SECRET_SEED"]     # S… secret
+"#,
+    );
+
     #[cfg(feature = "chain-eip155")]
     config.push_str(
         r#"
@@ -82,6 +100,44 @@ log_level = "info"
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
 receipt_timeout_secs = 20
+"#,
+    );
+
+    #[cfg(feature = "chain-keeta")]
+    config.push_str(
+        r#"
+# Keeta
+#
+# Key format: "keeta:21378" | "keeta:1413829460"
+# No `rpc`. Seed is hex or standard-base64 32 bytes; mnemonics are not supported.
+
+[chains."keeta:1413829460"]
+"#,
+    );
+
+    #[cfg(feature = "chain-tvm")]
+    config.push_str(
+        r#"
+# TON (TVM)
+#
+# Key format: "tvm:-239" | "tvm:-3"
+# rpc / provider_base_url is an optional string URL. Keep confirmation_timeout_seconds ≤ 20
+# unless the 30 s HTTP client timeout is raised with it.
+
+[chains."tvm:-3"]
+"#,
+    );
+
+    #[cfg(feature = "chain-stellar")]
+    config.push_str(
+        r#"
+# Stellar
+#
+# Key format: "stellar:pubnet" | "stellar:testnet"
+# rpc is an optional string URL; pubnet requires a non-empty rpc.
+# Optional fee_bump / [signers].stellar_fee_bump, horizon_url, max_transaction_fee_stroops.
+
+[chains."stellar:testnet"]
 "#,
     );
 
@@ -118,5 +174,32 @@ mod tests {
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
         let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
         assert!(chains.contains_key("eip155:84532"), "base sepolia present");
+    }
+
+    #[cfg(feature = "chain-keeta")]
+    #[test]
+    fn generate_default_config_has_keeta_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("keeta:1413829460"), "keeta testnet");
+    }
+
+    #[cfg(feature = "chain-tvm")]
+    #[test]
+    fn generate_default_config_has_tvm_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("tvm:-3"), "tvm testnet");
+    }
+
+    #[cfg(feature = "chain-stellar")]
+    #[test]
+    fn generate_default_config_has_stellar_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("stellar:testnet"), "stellar testnet");
     }
 }

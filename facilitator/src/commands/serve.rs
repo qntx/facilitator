@@ -63,7 +63,12 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
 
 /// Construct chain handles and register compiled schemes.
 #[cfg_attr(
-    not(feature = "chain-eip155"),
+    not(any(
+        feature = "chain-eip155",
+        feature = "chain-keeta",
+        feature = "chain-tvm",
+        feature = "chain-stellar"
+    )),
     allow(unused_variables, reason = "no compiled chain families in this build")
 )]
 fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppError> {
@@ -71,14 +76,57 @@ fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry, AppE
 
     #[cfg(feature = "chain-eip155")]
     {
-        use crate::chain::eip155::build_eip155_handle;
         use r402_evm::Eip155Exact;
+
+        use crate::chain::eip155::build_eip155_handle;
 
         for chain in config.chains().eip155() {
             let handle = build_eip155_handle(chain)?;
             registry
                 .register(&Eip155Exact, &handle, None)
                 .map_err(|e| AppError::chain(format!("failed to register eip155 exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-keeta")]
+    {
+        use r402_keeta::KeetaExact;
+
+        use crate::chain::keeta::build_keeta_provider;
+
+        for chain in config.chains().keeta() {
+            let provider = build_keeta_provider(chain)?;
+            registry
+                .register(&KeetaExact, &provider, None)
+                .map_err(|e| AppError::chain(format!("failed to register keeta exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-tvm")]
+    {
+        use r402_tvm::TvmExact;
+
+        use crate::chain::tvm::build_tvm_provider;
+
+        for chain in config.chains().tvm() {
+            let provider = build_tvm_provider(chain)?;
+            registry
+                .register(&TvmExact, &provider, chain.scheme_config_json())
+                .map_err(|e| AppError::chain(format!("failed to register tvm exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-stellar")]
+    {
+        use r402_stellar::StellarExact;
+
+        use crate::chain::stellar::build_stellar_provider;
+
+        for chain in config.chains().stellar() {
+            let provider = build_stellar_provider(chain)?;
+            registry
+                .register(&StellarExact, &provider, None)
+                .map_err(|e| AppError::chain(format!("failed to register stellar exact: {e}")))?;
         }
     }
 

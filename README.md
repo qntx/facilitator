@@ -131,6 +131,9 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Family | This build | Notes |
 | --- | --- | --- |
 | **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
+| **Keeta exact** | `chain-keeta` | hex/base64 32-byte seed + indices; no `rpc`; no mnemonic |
+| **TON (TVM) exact** | `chain-tvm` | hex/base64 32- or 64-byte key; optional string `rpc` |
+| **Stellar exact** | `chain-stellar` | `S…` secrets; pubnet requires `rpc` |
 | **Solana (SVM)** | later PR | Not compiled in 1.0.0-pr1 default features |
 
 ## Feature Flags
@@ -138,6 +141,9 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Feature | Default | Description |
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
+| `chain-keeta` | | Keeta exact via [r402-keeta](https://crates.io/crates/r402-keeta) 0.17.1 |
+| `chain-tvm` | | TON exact via [r402-tvm](https://crates.io/crates/r402-tvm) 0.17.1 |
+| `chain-stellar` | | Stellar exact via [r402-stellar](https://crates.io/crates/r402-stellar) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
 
 ```bash

@@ -19,6 +19,9 @@ path = "src/main.rs"
 [features]
 default = ["telemetry", "chain-eip155"]
 chain-eip155 = ["dep:r402-evm", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
+chain-keeta = ["dep:r402-keeta", "dep:base64"]
+chain-stellar = ["dep:r402-stellar"]
+chain-tvm = ["dep:r402-tvm"]
 telemetry = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -26,6 +29,9 @@ telemetry = [
     "dep:opentelemetry-semantic-conventions",
     "dep:tracing-opentelemetry",
     "r402-evm?/telemetry",
+    "r402-keeta?/telemetry",
+    "r402-stellar?/telemetry",
+    "r402-tvm?/telemetry",
 ]
 
 [dependencies]
@@ -49,6 +55,10 @@ opentelemetry-otlp = { workspace = true, optional = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 r402-evm = { workspace = true, optional = true }
+r402-keeta = { workspace = true, optional = true }
+r402-stellar = { workspace = true, optional = true }
+r402-tvm = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 alloy-network = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
