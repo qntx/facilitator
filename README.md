@@ -21,7 +21,7 @@
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features host EIP-155 **exact** and **upto**, plus **Solana exact**. `batch-settlement` is opt-in. This process does **not** host `auth-capture`. See [Security](SECURITY.md) before using in production.
+Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features host EIP-155 **exact** and **upto**, plus **Solana exact**. `batch-settlement` is opt-in. NEAR and XRPL exact are optional Cargo features. This process does **not** host `auth-capture`. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -141,6 +141,9 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | **EVM (EIP-155) batch-settlement** | opt-in | r402 `MemoryChannelStore` is **single-process**. Pin settle to one replica; do not split the store across workers. |
 | **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
 | **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
+| **NEAR exact** | `--features chain-near` | Relayers from `[signers].near` (`account_id` + `secret_key`) |
+| **XRPL exact** | `--features chain-xrpl` | No facilitator signer; `[signers].xrpl` is a startup error |
+| **Tron exact** | blocked | r402-tron 0.17.1 has no `SchemeBuilder<&TronChainProvider>` |
 
 `SettlementCache` (in-memory, TTL 120 s) is per process. `MemoryChannelStore` exists only if `scheme-batch-settlement` is built. Pin `/settle` to one replica; do not scale or put two facilitators behind one Caddy. Watchtower rolling restart does not overlap two copies of this compose service.
 
@@ -152,10 +155,13 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | `chain-solana` | ✓ | Solana exact via [r402-solana](https://crates.io/crates/r402-solana) 0.17.1 |
 | `scheme-upto` | ✓ | Register EVM `upto`. Requires `chain-eip155`. Registration-only (does not compile r402-evm modules out). |
 | `scheme-batch-settlement` | | Register EVM `batch-settlement`. Requires `chain-eip155`. `MemoryChannelStore` is in-memory per process. |
+| `chain-near` | | NEAR exact via [r402-near](https://crates.io/crates/r402-near) 0.17.1 |
+| `chain-xrpl` | | XRPL exact via [r402-xrpl](https://crates.io/crates/r402-xrpl) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
 
 ```bash
 cargo install facilitator --no-default-features --features chain-eip155,chain-solana,scheme-upto
+cargo install facilitator --features chain-near,chain-xrpl
 ```
 
 ## Security

@@ -55,14 +55,20 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides are still possible (add `signers` / `signer` to
-# the individual chain table).
+# Per-chain overrides are still possible (add `signers` / `signer` /
+# `relayers` to the individual chain table).
 #
-# Use environment variable references ($VAR or ${VAR}) for secrets.
 
-[signers]
+# Use environment variable references ($VAR or ${VAR}) for secrets.
 "#,
     );
+
+    #[cfg(feature = "chain-eip155")]
+    config.push_str("# Per-chain EVM override: add `signers` on the chain table.\n");
+    #[cfg(feature = "chain-near")]
+    config.push_str("# Per-chain NEAR override: add `relayers` on the chain table.\n");
+
+    config.push_str("\n[signers]\n");
 
     #[cfg(feature = "chain-eip155")]
     config.push_str(
@@ -74,6 +80,18 @@ log_level = "info"
     config.push_str(
         r#"solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
 "#,
+    );
+
+    #[cfg(feature = "chain-near")]
+    config.push_str(
+        r#"near = [{ account_id = "relayer.testnet", secret_key = "$NEAR_SECRET_KEY" }]
+"#,
+    );
+
+    #[cfg(feature = "chain-xrpl")]
+    config.push_str(
+        r"# XRPL has no hot wallet. Do not set [signers].xrpl (startup error).
+",
     );
 
     #[cfg(feature = "chain-eip155")]
@@ -102,6 +120,34 @@ receipt_timeout_secs = 20
 
 [chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
 rpc = "https://api.devnet.solana.com"
+"#,
+    );
+
+    #[cfg(feature = "chain-near")]
+    config.push_str(
+        r#"
+# NEAR chains
+#
+# Key format: "near:mainnet" | "near:testnet"
+# rpc is optional (chain default public RPC). Relayers inject from [signers].near.
+# Optional max_sponsored_gas becomes scheme JSON maxSponsoredGas.
+
+[chains."near:testnet"]
+# rpc = "https://rpc.testnet.fastnear.com"
+# max_sponsored_gas = 100000000000000
+"#,
+    );
+
+    #[cfg(feature = "chain-xrpl")]
+    config.push_str(
+        r#"
+# XRPL chains
+#
+# Key format: "xrpl:0" (mainnet) | "xrpl:1" (testnet) | "xrpl:2" (devnet)
+# rpc is optional (default public JSON-RPC). No facilitator signer.
+
+[chains."xrpl:1"]
+# rpc = "https://s.altnet.rippletest.net:51234"
 "#,
     );
 
@@ -138,6 +184,37 @@ mod tests {
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
         let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
         assert!(chains.contains_key("eip155:84532"), "base sepolia present");
+        assert!(
+            config_str.contains("add `signers` on the chain table"),
+            "evm override field"
+        );
+    }
+
+    #[cfg(feature = "chain-near")]
+    #[test]
+    fn generate_default_config_has_near_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("near:testnet"), "near testnet present");
+        let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
+        assert!(signers.contains_key("near"), "near signers");
+        assert!(
+            config_str.contains("add `relayers` on the chain table"),
+            "near override field"
+        );
+    }
+
+    #[cfg(feature = "chain-xrpl")]
+    #[test]
+    fn generate_default_config_has_xrpl_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("xrpl:1"), "xrpl testnet present");
+        if let Some(signers) = doc.get("signers").and_then(toml::Value::as_table) {
+            assert!(!signers.contains_key("xrpl"), "no xrpl signer");
+        }
     }
 
     #[cfg(feature = "chain-solana")]

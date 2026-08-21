@@ -63,7 +63,12 @@ pub(crate) async fn run(config_path: &Path) -> Result<(), AppError> {
 
 /// Construct chain handles and register compiled schemes.
 #[cfg_attr(
-    not(any(feature = "chain-eip155", feature = "chain-solana")),
+    not(any(
+        feature = "chain-eip155",
+        feature = "chain-solana",
+        feature = "chain-near",
+        feature = "chain-xrpl"
+    )),
     allow(unused_variables, reason = "no compiled chain families in this build")
 )]
 #[cfg_attr(
@@ -98,6 +103,35 @@ async fn build_registry(config: &crate::config::Config) -> Result<SchemeRegistry
             registry
                 .register(&SolanaExact, &handle, Some(json))
                 .map_err(|e| AppError::chain(format!("failed to register solana exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-near")]
+    {
+        use r402_near::NearExact;
+
+        use crate::chain::near::{build_near_provider, near_scheme_json};
+
+        for chain in config.chains().near() {
+            let provider = build_near_provider(chain)?;
+            let json = near_scheme_json(&chain.inner);
+            registry
+                .register(&NearExact, &provider, json)
+                .map_err(|e| AppError::chain(format!("failed to register near exact: {e}")))?;
+        }
+    }
+
+    #[cfg(feature = "chain-xrpl")]
+    {
+        use r402_xrpl::XrplExact;
+
+        use crate::chain::xrpl::build_xrpl_provider;
+
+        for chain in config.chains().xrpl() {
+            let provider = build_xrpl_provider(chain)?;
+            registry
+                .register(&XrplExact, &provider, None)
+                .map_err(|e| AppError::chain(format!("failed to register xrpl exact: {e}")))?;
         }
     }
 
