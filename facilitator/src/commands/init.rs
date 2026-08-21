@@ -36,11 +36,7 @@ pub(crate) fn run(output: &Path, force: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Generate a default TOML configuration template.
-///
-/// The output includes commented sections for every chain family enabled
-/// at compile time.  Uses the simplified format with global signers
-/// and environment variable resolution.
+/// Generate a default TOML configuration template for compiled families.
 #[must_use]
 fn generate_default_config() -> String {
     let mut config = String::from(
@@ -59,8 +55,8 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides are still possible (add `signers` / `signer` to
-# the individual chain table).
+# Per-chain overrides are still possible (add `signers` to the
+# individual chain table).
 #
 # Use environment variable references ($VAR or ${VAR}) for secrets.
 
@@ -74,12 +70,6 @@ log_level = "info"
 "#,
     );
 
-    #[cfg(feature = "chain-solana")]
-    config.push_str(
-        r#"solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
-"#,
-    );
-
     #[cfg(feature = "chain-eip155")]
     config.push_str(
         r#"
@@ -87,36 +77,11 @@ log_level = "info"
 #
 # Key format: "eip155:<chain_id>"
 # Only RPC config is needed; signers are injected from [signers] above.
+# Schemes are compiled in (exact); do not add [[schemes]].
 
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
-"#,
-    );
-
-    #[cfg(feature = "chain-solana")]
-    config.push_str(
-        r#"
-# Solana chains
-#
-# Key format: "solana:<genesis_hash>"
-
-[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
-rpc = "https://api.devnet.solana.com"
-"#,
-    );
-
-    config.push_str(
-        r#"
-# Scheme registrations (optional)
-#
-# If omitted, all configured chains are auto-registered with
-# every available scheme.
-#
-# Uncomment below only if you need to restrict schemes:
-#
-# [[schemes]]
-# id = "eip155-exact"
-# chains = "eip155:84532"
+receipt_timeout_secs = 20
 "#,
     );
 
@@ -140,8 +105,18 @@ mod tests {
     fn generate_default_config_has_required_fields() {
         let config_str = generate_default_config();
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
-        assert!(doc.contains_key("host"));
-        assert!(doc.contains_key("port"));
-        assert!(doc.contains_key("signers"));
+        assert!(doc.contains_key("host"), "host");
+        assert!(doc.contains_key("port"), "port");
+        assert!(doc.contains_key("signers"), "signers");
+        assert!(!doc.contains_key("schemes"), "no [[schemes]]");
+    }
+
+    #[cfg(feature = "chain-eip155")]
+    #[test]
+    fn generate_default_config_has_eip155_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("eip155:84532"), "base sepolia present");
     }
 }

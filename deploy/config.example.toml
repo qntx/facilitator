@@ -9,7 +9,7 @@
 # Key concepts:
 #   - [signers]  — configure private keys ONCE, shared across all chains
 #   - [chains.*] — only RPC endpoints needed per chain
-#   - [[schemes]] — OPTIONAL, auto-generated from configured chains if omitted
+#   - Schemes are compiled in (EVM exact this build). Do not add [[schemes]].
 
 host = "0.0.0.0"
 port = 8080
@@ -20,12 +20,10 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides: add `signers = [...]` (EVM) or `signer = "..."` (Solana)
-# directly in the chain table.
+# Per-chain overrides: add `signers = [...]` (EVM) directly in the chain table.
 
 [signers]
 evm = ["0xYOUR_EVM_PRIVATE_KEY_HERE"]          # hex, 0x-prefixed
-solana = "YOUR_SOLANA_KEYPAIR_BASE58_HERE"      # base58, 64-byte keypair
 
 # EIP-155 (EVM) Chains — Mainnet
 #
@@ -201,15 +199,3 @@ rpc = [{ http = "https://rpc.codex-stg.xyz" }]
 # XDC Apothem Testnet (chain 51)
 [chains."eip155:51"]
 rpc = [{ http = "https://rpc.apothem.network" }]
-
-# Solana Chains
-#
-# Key format: "solana:<truncated_genesis_hash>"
-
-# Solana Mainnet
-[chains."solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
-rpc = "https://api.mainnet-beta.solana.com"
-
-# Solana Devnet
-[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
-rpc = "https://api.devnet.solana.com"

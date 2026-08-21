@@ -6,10 +6,6 @@ use thiserror::Error;
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Top-level error type for the facilitator application.
-///
-/// Each variant carries a human-readable `context` message and an optional
-/// `source` error that preserves the original cause for `Error::source()`
-/// chain traversal and structured logging.
 #[derive(Debug, Error)]
 pub(crate) enum AppError {
     /// Configuration file could not be resolved, read, or parsed.
