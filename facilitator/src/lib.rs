@@ -4,8 +4,12 @@
 
 // Dev-dependencies are linked into the lib test target; they are consumed
 // by `tests/http_wire.rs`, not by unit tests in this crate.
+#[cfg(all(test, not(feature = "metrics")))]
+use ::metrics as _;
 #[cfg(test)]
 use http_body_util as _;
+#[cfg(all(test, not(feature = "metrics")))]
+use metrics_util as _;
 #[cfg(test)]
 use tower as _;
 

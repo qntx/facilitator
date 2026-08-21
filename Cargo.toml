@@ -37,6 +37,7 @@ tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # Same facade r402-core uses. Optional; process `metrics` feature pulls it.
 metrics = "0.24"
+metrics-util = { version = "0.19", default-features = false, features = ["debugging"] }
 url = "2.5.8"
 
 [profile.release]

@@ -139,7 +139,20 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
-| `metrics` | | Process `facilitator_http_*` counters/histograms via the [`metrics`](https://docs.rs/metrics/0.24) facade; enables `r402-core/metrics` for `r402_settlement_cache_reserve_total`. No Prometheus bind. Operators install a recorder. |
+| `metrics` | | Process HTTP `facilitator_http_*` via the [`metrics`](https://docs.rs/metrics/0.24) facade; enables `r402-core/metrics` for `r402_settlement_cache_reserve_total` |
+
+### Metrics (`--features metrics`)
+
+The binary does **not** install a recorder and does not bind Prometheus. Operators attach one (for example `metrics-exporter-prometheus`). `telemetry` OTLP (`MetricsLayer`) does not scrape this facade.
+
+| Name | `result` |
+| --- | --- |
+| `facilitator_http_verify_total` | `valid` \| `invalid` \| `error` |
+| `facilitator_http_verify_duration_seconds` | same |
+| `facilitator_http_settle_total` | `success` \| `failure` \| `error` |
+| `facilitator_http_settle_duration_seconds` | same |
+
+`error` is HTTP 400, cancelled/504 timeout, and `FacilitatorError` other than a missing handler. Envelope rejects and `no_facilitator_for_network` are `invalid` / `failure`. This process never increments `r402_facilitator_*`.
 
 ```bash
 cargo install facilitator --no-default-features --features chain-eip155

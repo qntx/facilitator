@@ -5,7 +5,7 @@
 //! bodies. HTTP 400 is reserved for Axum `JsonRejection`.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
@@ -19,6 +19,10 @@ use r402_core::wire::{
 };
 use tower_http::timeout::TimeoutLayer;
 use tracing::instrument;
+
+use crate::metrics::{
+    SettleMetric, SettleResult, VerifyMetric, VerifyResult, settle_from_error, verify_from_error,
+};
 
 /// Shared facilitator used by Axum handlers.
 pub type FacilitatorState = Arc<dyn DynFacilitator>;
@@ -68,26 +72,26 @@ async fn post_verify(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<VerifyRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    let started = Instant::now();
+    let mut metric = VerifyMetric::start();
     let Ok(Json(request)) = body else {
-        crate::metrics::record_verify("error", started.elapsed());
+        metric.finish(VerifyResult::Error);
         return invalid_request_body();
     };
     if let Some(resp) = classify_verify_envelope(&request) {
-        crate::metrics::record_verify("invalid", started.elapsed());
+        metric.finish(VerifyResult::Invalid);
         return (StatusCode::OK, Json(resp)).into_response();
     }
-    let (response, result) = match Facilitator::verify(&facilitator, request).await {
+    let response = match Facilitator::verify(&facilitator, request).await {
         Ok(resp) => {
-            let result = if resp.is_valid() { "valid" } else { "invalid" };
-            (resp, result)
+            metric.finish(VerifyResult::from_response(&resp));
+            resp
         }
         Err(ref error) => {
             tracing::warn!(?error, "verification failed");
-            (VerifyResponse::from_facilitator_error(error), "error")
+            metric.finish(verify_from_error(error));
+            VerifyResponse::from_facilitator_error(error)
         }
     };
-    crate::metrics::record_verify(result, started.elapsed());
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -97,34 +101,27 @@ async fn post_settle(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<SettleRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    let started = Instant::now();
+    let mut metric = SettleMetric::start();
     let Ok(Json(request)) = body else {
-        crate::metrics::record_settle("error", started.elapsed());
+        metric.finish(SettleResult::Error);
         return invalid_request_body();
     };
     if let Some(resp) = classify_settle_envelope(&request) {
-        crate::metrics::record_settle("failure", started.elapsed());
+        metric.finish(SettleResult::Failure);
         return (StatusCode::OK, Json(resp)).into_response();
     }
     let network = request.network().to_owned();
-    let (response, result) = match Facilitator::settle(&facilitator, request).await {
+    let response = match Facilitator::settle(&facilitator, request).await {
         Ok(resp) => {
-            let result = if resp.is_success() {
-                "success"
-            } else {
-                "failure"
-            };
-            (resp, result)
+            metric.finish(SettleResult::from_response(&resp));
+            resp
         }
         Err(ref error) => {
             tracing::warn!(?error, "settlement failed");
-            (
-                SettleResponse::from_facilitator_error(error, network),
-                "error",
-            )
+            metric.finish(settle_from_error(error));
+            SettleResponse::from_facilitator_error(error, network)
         }
     };
-    crate::metrics::record_settle(result, started.elapsed());
     (StatusCode::OK, Json(response)).into_response()
 }
 
