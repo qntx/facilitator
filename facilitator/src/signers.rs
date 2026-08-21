@@ -98,6 +98,7 @@ pub(crate) fn preprocess_signers_with(
     };
 
     let evm_signers = signers.get("evm").cloned().map(wrap_evm_signers);
+    let solana_signer = signers.get("solana").cloned();
 
     if let Some(toml::Value::Table(chains)) = doc.get_mut("chains") {
         for (chain_id, chain_val) in chains.iter_mut() {
@@ -109,6 +110,12 @@ pub(crate) fn preprocess_signers_with(
                 && let Some(val) = evm_signers.as_ref()
             {
                 chain_table.insert("signers".to_owned(), val.clone());
+            }
+            if chain_id.starts_with("solana:")
+                && !chain_table.contains_key("signer")
+                && let Some(val) = solana_signer.as_ref()
+            {
+                chain_table.insert("signer".to_owned(), val.clone());
             }
         }
     }
@@ -323,6 +330,78 @@ signers = ["0xlocal"]
         assert_eq!(
             signers.first().and_then(toml::Value::as_str),
             Some("0xlocal"),
+            "per-chain wins"
+        );
+    }
+
+    #[test]
+    fn global_solana_signer_injected() {
+        let toml_str = r#"
+[signers]
+solana = "base58key"
+
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        preprocess_signers(&mut doc).unwrap();
+        assert!(!doc.contains_key("signers"), "signers section removed");
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        assert_eq!(
+            chain.get("signer").and_then(toml::Value::as_str),
+            Some("base58key"),
+            "injected string"
+        );
+    }
+
+    #[test]
+    fn dollar_var_resolved_on_solana_inject() {
+        let toml_str = r#"
+[signers]
+solana = "$SOLANA_KEY"
+
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let env = BTreeMap::from([("SOLANA_KEY".to_owned(), "base58resolved".to_owned())]);
+        preprocess_signers_with(&mut doc, mock_lookup(&env)).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        assert_eq!(
+            chain.get("signer").and_then(toml::Value::as_str),
+            Some("base58resolved"),
+            "$VAR inject"
+        );
+    }
+
+    #[test]
+    fn per_chain_solana_signer_not_overridden() {
+        let toml_str = r#"
+[signers]
+solana = "globalkey"
+
+[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+signer = "localkey"
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        preprocess_signers(&mut doc).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        assert_eq!(
+            chain.get("signer").and_then(toml::Value::as_str),
+            Some("localkey"),
             "per-chain wins"
         );
     }
