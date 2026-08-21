@@ -20,6 +20,10 @@ use r402_core::wire::{
 use tower_http::timeout::TimeoutLayer;
 use tracing::instrument;
 
+use crate::metrics::{
+    SettleMetric, SettleResult, VerifyMetric, VerifyResult, settle_from_error, verify_from_error,
+};
+
 /// Shared facilitator used by Axum handlers.
 pub type FacilitatorState = Arc<dyn DynFacilitator>;
 
@@ -68,16 +72,23 @@ async fn post_verify(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<VerifyRequest>, JsonRejection>,
 ) -> impl IntoResponse {
+    let mut metric = VerifyMetric::start();
     let Ok(Json(request)) = body else {
+        metric.finish(VerifyResult::Error);
         return invalid_request_body();
     };
     if let Some(resp) = classify_verify_envelope(&request) {
+        metric.finish(VerifyResult::Invalid);
         return (StatusCode::OK, Json(resp)).into_response();
     }
     let response = match Facilitator::verify(&facilitator, request).await {
-        Ok(resp) => resp,
+        Ok(resp) => {
+            metric.finish(VerifyResult::from_response(&resp));
+            resp
+        }
         Err(ref error) => {
             tracing::warn!(?error, "verification failed");
+            metric.finish(verify_from_error(error));
             VerifyResponse::from_facilitator_error(error)
         }
     };
@@ -90,17 +101,24 @@ async fn post_settle(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<SettleRequest>, JsonRejection>,
 ) -> impl IntoResponse {
+    let mut metric = SettleMetric::start();
     let Ok(Json(request)) = body else {
+        metric.finish(SettleResult::Error);
         return invalid_request_body();
     };
     if let Some(resp) = classify_settle_envelope(&request) {
+        metric.finish(SettleResult::Failure);
         return (StatusCode::OK, Json(resp)).into_response();
     }
     let network = request.network().to_owned();
     let response = match Facilitator::settle(&facilitator, request).await {
-        Ok(resp) => resp,
+        Ok(resp) => {
+            metric.finish(SettleResult::from_response(&resp));
+            resp
+        }
         Err(ref error) => {
             tracing::warn!(?error, "settlement failed");
+            metric.finish(settle_from_error(error));
             SettleResponse::from_facilitator_error(error, network)
         }
     };

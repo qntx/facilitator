@@ -103,6 +103,57 @@ impl Facilitator for FailingSettle {
     }
 }
 
+struct ErroringFacilitator;
+
+impl Facilitator for ErroringFacilitator {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("rpc down".into())))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("rpc down".into())))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(SupportedResponse::new()))
+    }
+}
+
+struct InvalidVerify;
+
+impl Facilitator for InvalidVerify {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(VerifyResponse::invalid(
+            None,
+            ErrorReason::InsufficientFunds,
+        )))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("unused".into())))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(SupportedResponse::new()))
+    }
+}
+
 fn stub_app() -> axum::Router {
     let state: FacilitatorState = Arc::new(StubFacilitator);
     routes().with_state(state)
@@ -356,4 +407,239 @@ async fn well_formed_unknown_network_is_no_facilitator() {
         json["invalidReason"], "no_facilitator_for_network",
         "registry abort"
     );
+}
+
+#[tokio::test]
+async fn facilitator_error_on_verify_is_200_invalid() {
+    let state: FacilitatorState = Arc::new(ErroringFacilitator);
+    let app = routes().with_state(state);
+    let (status, json) = send(app, json_request("POST", "/verify", &ts_client_body())).await;
+    assert_eq!(status, StatusCode::OK, "protocol error is still 200");
+    assert_eq!(json["isValid"], false, "mapped to Invalid");
+}
+
+#[tokio::test]
+async fn facilitator_error_on_settle_is_200_failure() {
+    let state: FacilitatorState = Arc::new(ErroringFacilitator);
+    let app = routes().with_state(state);
+    let (status, json) = send(app, json_request("POST", "/settle", &ts_client_body())).await;
+    assert_eq!(status, StatusCode::OK, "protocol error is still 200");
+    assert_eq!(json["success"], false, "mapped to Failure");
+    assert_eq!(json["transaction"], "", "empty on failure");
+}
+
+#[tokio::test]
+async fn ok_invalid_verify_is_insufficient_funds() {
+    let state: FacilitatorState = Arc::new(InvalidVerify);
+    let app = routes().with_state(state);
+    let (status, json) = send(app, json_request("POST", "/verify", &ts_client_body())).await;
+    assert_eq!(status, StatusCode::OK, "200");
+    assert_eq!(json["isValid"], false, "invalid");
+    assert_eq!(json["invalidReason"], "insufficient_funds", "scheme reject");
+}
+
+#[cfg(feature = "metrics")]
+mod recorded {
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
+
+    use super::*;
+
+    fn assert_counter(snapshotter: &Snapshotter, name: &str, result: &str, n: u64) {
+        let rows = snapshotter.snapshot().into_vec();
+        let got = rows.iter().find_map(|(ck, _, _, value)| {
+            if ck.key().name() != name {
+                return None;
+            }
+            let labeled = ck
+                .key()
+                .labels()
+                .any(|label| label.key() == "result" && label.value() == result);
+            match (labeled, value) {
+                (true, DebugValue::Counter(count)) => Some(*count),
+                _ => None,
+            }
+        });
+        assert_eq!(got, Some(n), "{name} result={result} in {rows:?}");
+        assert!(
+            rows.iter()
+                .all(|(ck, _, _, _)| !ck.key().name().starts_with("r402_facilitator_")),
+            "r402_facilitator_* must stay unused: {rows:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_valid() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (status, _) = send(
+            stub_app(),
+            json_request("POST", "/verify", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_verify_total", "valid", 1);
+    }
+
+    #[tokio::test]
+    async fn verify_json_rejection_is_error() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/verify")
+            .header("content-type", "application/json")
+            .body(Body::from("not-json"))
+            .unwrap();
+        let (status, _) = send(stub_app(), req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "400");
+        assert_counter(&snapshotter, "facilitator_http_verify_total", "error", 1);
+    }
+
+    #[tokio::test]
+    async fn verify_envelope_is_invalid() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (status, _) = send(stub_app(), json_request("POST", "/verify", &json!({}))).await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_verify_total", "invalid", 1);
+    }
+
+    #[tokio::test]
+    async fn verify_ok_invalid_is_invalid_not_error() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let state: FacilitatorState = Arc::new(InvalidVerify);
+        let (status, json) = send(
+            routes().with_state(state),
+            json_request("POST", "/verify", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_eq!(json["invalidReason"], "insufficient_funds", "scheme");
+        assert_counter(&snapshotter, "facilitator_http_verify_total", "invalid", 1);
+    }
+
+    #[tokio::test]
+    async fn verify_onchain_err_is_error() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let state: FacilitatorState = Arc::new(ErroringFacilitator);
+        let (status, _) = send(
+            routes().with_state(state),
+            json_request("POST", "/verify", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_verify_total", "error", 1);
+    }
+
+    #[tokio::test]
+    async fn verify_missing_handler_is_invalid() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let state: FacilitatorState = Arc::new(SchemeRegistry::new());
+        let (status, json) = send(
+            routes().with_state(state),
+            json_request("POST", "/verify", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_eq!(
+            json["invalidReason"], "no_facilitator_for_network",
+            "reason"
+        );
+        assert_counter(&snapshotter, "facilitator_http_verify_total", "invalid", 1);
+    }
+
+    #[tokio::test]
+    async fn settle_success() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (status, _) = send(
+            stub_app(),
+            json_request("POST", "/settle", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_settle_total", "success", 1);
+    }
+
+    #[tokio::test]
+    async fn settle_ok_failure_is_failure() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let state: FacilitatorState = Arc::new(FailingSettle);
+        let (status, _) = send(
+            routes().with_state(state),
+            json_request("POST", "/settle", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_settle_total", "failure", 1);
+    }
+
+    #[tokio::test]
+    async fn settle_envelope_is_failure() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (status, _) = send(stub_app(), json_request("POST", "/settle", &json!({}))).await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_settle_total", "failure", 1);
+    }
+
+    #[tokio::test]
+    async fn settle_onchain_err_is_error() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let state: FacilitatorState = Arc::new(ErroringFacilitator);
+        let (status, _) = send(
+            routes().with_state(state),
+            json_request("POST", "/settle", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_counter(&snapshotter, "facilitator_http_settle_total", "error", 1);
+    }
+
+    #[tokio::test]
+    async fn settle_json_rejection_is_error() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/settle")
+            .header("content-type", "application/json")
+            .body(Body::from("not-json"))
+            .unwrap();
+        let (status, _) = send(stub_app(), req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "400");
+        assert_counter(&snapshotter, "facilitator_http_settle_total", "error", 1);
+    }
+
+    #[tokio::test]
+    async fn settle_missing_handler_is_failure() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let state: FacilitatorState = Arc::new(SchemeRegistry::new());
+        let (status, json) = send(
+            routes().with_state(state),
+            json_request("POST", "/settle", &ts_client_body()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "200");
+        assert_eq!(json["errorReason"], "no_facilitator_for_network", "reason");
+        assert_counter(&snapshotter, "facilitator_http_settle_total", "failure", 1);
+    }
 }

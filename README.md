@@ -21,7 +21,7 @@
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features host EIP-155 **exact** and **upto**, plus **Solana exact**. `batch-settlement` is opt-in. This process does **not** host `auth-capture`. See [Security](SECURITY.md) before using in production.
+Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features host EIP-155 **exact** and **upto**, plus **Solana exact**. `batch-settlement` is opt-in. NEAR, XRPL, Hedera, Algorand, Aptos, Keeta, TVM, and Stellar exact are optional Cargo features. This process does **not** host `auth-capture`. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -141,6 +141,15 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | **EVM (EIP-155) batch-settlement** | opt-in | r402 `MemoryChannelStore` is **single-process**. Pin settle to one replica; do not split the store across workers. |
 | **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
 | **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
+| **NEAR exact** | `--features chain-near` | Relayers from `[signers].near` (`account_id` + `secret_key`) |
+| **XRPL exact** | `--features chain-xrpl` | No facilitator signer; `[signers].xrpl` is a startup error |
+| **Hedera exact** | `--features chain-hedera` | `hedera:mainnet` / `hedera:testnet`; no `rpc` (optional `mirror_url` / `node_url`) |
+| **Algorand exact** | `--features chain-algorand` | standard-base64 seeds; optional `algod_url` / `algod_token` |
+| **Aptos exact** | `--features chain-aptos` | 32-byte ed25519 hex; optional string `rpc` |
+| **Keeta exact** | `--features chain-keeta` | hex/base64 32-byte seed + indices; no `rpc`; no mnemonic |
+| **TON (TVM) exact** | `--features chain-tvm` | hex/base64 32- or 64-byte key; optional string `rpc` |
+| **Stellar exact** | `--features chain-stellar` | `S…` secrets; pubnet requires `rpc` |
+| **Tron exact** | blocked | r402-tron 0.17.1 has no `SchemeBuilder<&TronChainProvider>` |
 
 `SettlementCache` (in-memory, TTL 120 s) is per process. `MemoryChannelStore` exists only if `scheme-batch-settlement` is built. Pin `/settle` to one replica; do not scale or put two facilitators behind one Caddy. Watchtower rolling restart does not overlap two copies of this compose service.
 
@@ -152,10 +161,33 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | `chain-solana` | ✓ | Solana exact via [r402-solana](https://crates.io/crates/r402-solana) 0.17.1 |
 | `scheme-upto` | ✓ | Register EVM `upto`. Requires `chain-eip155`. Registration-only (does not compile r402-evm modules out). |
 | `scheme-batch-settlement` | | Register EVM `batch-settlement`. Requires `chain-eip155`. `MemoryChannelStore` is in-memory per process. |
+| `chain-near` | | NEAR exact via [r402-near](https://crates.io/crates/r402-near) 0.17.1 |
+| `chain-xrpl` | | XRPL exact via [r402-xrpl](https://crates.io/crates/r402-xrpl) 0.17.1 |
+| `chain-hedera` | | Hedera exact via [r402-hedera](https://crates.io/crates/r402-hedera) 0.17.1 |
+| `chain-algorand` | | Algorand exact via [r402-algorand](https://crates.io/crates/r402-algorand) 0.17.1 |
+| `chain-aptos` | | Aptos exact via [r402-aptos](https://crates.io/crates/r402-aptos) 0.17.1 |
+| `chain-keeta` | | Keeta exact via [r402-keeta](https://crates.io/crates/r402-keeta) 0.17.1 |
+| `chain-tvm` | | TON exact via [r402-tvm](https://crates.io/crates/r402-tvm) 0.17.1 |
+| `chain-stellar` | | Stellar exact via [r402-stellar](https://crates.io/crates/r402-stellar) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
+| `metrics` | | Process HTTP `facilitator_http_*` via the [`metrics`](https://docs.rs/metrics/0.24) facade; enables `r402-core/metrics` for `r402_settlement_cache_reserve_total` |
+
+### Metrics (`--features metrics`)
+
+The binary does **not** install a recorder and does not bind Prometheus. Operators attach one (for example `metrics-exporter-prometheus`). `telemetry` OTLP (`MetricsLayer`) does not scrape this facade.
+
+| Name | `result` |
+| --- | --- |
+| `facilitator_http_verify_total` | `valid` \| `invalid` \| `error` |
+| `facilitator_http_verify_duration_seconds` | same |
+| `facilitator_http_settle_total` | `success` \| `failure` \| `error` |
+| `facilitator_http_settle_duration_seconds` | same |
+
+`error` is HTTP 400, cancelled/504 timeout, and `FacilitatorError` other than a missing handler. Envelope rejects and `no_facilitator_for_network` are `invalid` / `failure`. This process never increments `r402_facilitator_*`.
 
 ```bash
 cargo install facilitator --no-default-features --features chain-eip155,chain-solana,scheme-upto
+cargo install facilitator --features chain-near,chain-xrpl,chain-hedera,chain-algorand,chain-aptos,chain-keeta,chain-tvm,chain-stellar,metrics
 ```
 
 ## Security
