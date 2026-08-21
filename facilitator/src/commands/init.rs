@@ -55,14 +55,16 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides are still possible (add `signers` to the
-# individual chain table).
-#
 # Use environment variable references ($VAR or ${VAR}) for secrets.
-
-[signers]
 "#,
     );
+
+    #[cfg(feature = "chain-eip155")]
+    config.push_str("# Per-chain EVM override: add `signers` on the chain table.\n");
+    #[cfg(feature = "chain-near")]
+    config.push_str("# Per-chain NEAR override: add `relayers` on the chain table.\n");
+
+    config.push_str("\n[signers]\n");
 
     #[cfg(feature = "chain-eip155")]
     config.push_str(
@@ -158,6 +160,10 @@ mod tests {
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
         let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
         assert!(chains.contains_key("eip155:84532"), "base sepolia present");
+        assert!(
+            config_str.contains("add `signers` on the chain table"),
+            "evm override field"
+        );
     }
 
     #[cfg(feature = "chain-near")]
@@ -169,6 +175,10 @@ mod tests {
         assert!(chains.contains_key("near:testnet"), "near testnet present");
         let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
         assert!(signers.contains_key("near"), "near signers");
+        assert!(
+            config_str.contains("add `relayers` on the chain table"),
+            "near override field"
+        );
     }
 
     #[cfg(feature = "chain-xrpl")]

@@ -16,12 +16,14 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides: add `signers = [...]` directly in the chain table.
+# Per-chain overrides: EVM `signers = [...]`, NEAR `relayers = [...]` on the chain table.
+# XRPL has no signer; do not set [signers].xrpl.
 #
 # Use environment variable references ($VAR or ${VAR}) for secrets.
 
 [signers]
 evm = ["$EVM_SIGNER_PRIVATE_KEY"]          # hex, 0x-prefixed
+# near = [{ account_id = "relayer.testnet", secret_key = "$NEAR_SECRET_KEY" }]  # --features chain-near
 
 # EIP-155 (EVM) Chains
 #
@@ -40,11 +42,10 @@ rpc = [{ http = "https://mainnet.base.org" }]
 rpc = [{ http = "https://ethereum-rpc.publicnode.com" }]
 
 # NEAR exact — compile with --features chain-near
-# [signers].near injects into chain `relayers`. Nested $VAR is resolved.
+# Add `near = [...]` under the existing [signers] table above (do not add a second [signers]).
+# Injects into chain `relayers`. Nested $VAR is resolved.
 # rpc is optional (FastNEAR default). max_sponsored_gas is optional scheme JSON.
 #
-# [signers]
-# near = [{ account_id = "relayer.testnet", secret_key = "$NEAR_SECRET_KEY" }]
 # [chains."near:testnet"]
 # rpc = "https://rpc.testnet.fastnear.com"
 # max_sponsored_gas = 100000000000000

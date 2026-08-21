@@ -10,11 +10,11 @@ use serde::Deserialize;
 
 #[cfg(feature = "chain-eip155")]
 use crate::chain::eip155::Eip155ChainConfig;
-use crate::chain::family_feature;
 #[cfg(feature = "chain-near")]
 use crate::chain::near::NearChainConfig;
 #[cfg(feature = "chain-xrpl")]
 use crate::chain::xrpl::XrplChainConfig;
+use crate::chain::{blocked_family, family_feature};
 use crate::error::AppError;
 use crate::signers;
 
@@ -203,6 +203,11 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
             #[cfg(feature = "chain-xrpl")]
             "xrpl" => xrpl.push(XrplChainConfig::from_toml(&chain_id, value)?),
             other => {
+                if let Some(reason) = blocked_family(other) {
+                    return Err(AppError::config(format!(
+                        "family '{other}' in [chains.\"{key}\"] {reason}"
+                    )));
+                }
                 if let Some(feature) = family_feature(other) {
                     return Err(AppError::config(format!(
                         "compiled-out family '{other}' in [chains.\"{key}\"]; rebuild with --features {feature}"
@@ -260,6 +265,25 @@ rpc = "https://example.com"
         assert!(
             err.to_string().contains("unknown CAIP-2 namespace"),
             "got {err}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_blocked_tron() {
+        let raw = r#"
+[chains."tron:0x2b6653dc"]
+rpc = "https://api.trongrid.io"
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not hosted on r402 0.17.1"), "got {err}");
+        assert!(
+            msg.contains("SchemeBuilder<&TronChainProvider>"),
+            "got {err}"
+        );
+        assert!(
+            !msg.contains("--features chain-tron"),
+            "must not advertise a missing feature: {err}"
         );
     }
 

@@ -52,8 +52,9 @@ impl XrplChainConfig {
 /// Returns an error if the chain has no default RPC and `rpc` is omitted, or
 /// if `rpc` is not a valid URL.
 pub(crate) fn build_xrpl_provider(config: &XrplChainConfig) -> Result<XrplChainProvider, AppError> {
+    let chain_id = ChainId::from(config.chain_reference);
     XrplChainProvider::new(config.chain_reference, config.inner.rpc.clone())
-        .map_err(|e| AppError::chain_with("XRPL provider init failed", e))
+        .map_err(|e| AppError::chain_with(format!("XRPL provider init failed for {chain_id}"), e))
 }
 
 #[cfg(test)]
@@ -80,8 +81,14 @@ mod tests {
         };
         let err = build_xrpl_provider(&config).unwrap_err();
         assert!(
-            err.to_string().contains("XRPL provider init failed"),
+            err.to_string()
+                .contains("XRPL provider init failed for xrpl:99"),
             "got {err}"
+        );
+        let source = std::error::Error::source(&err).expect("source");
+        assert!(
+            source.to_string().contains("no default xrpl rpc url"),
+            "got {source}"
         );
     }
 }

@@ -92,7 +92,12 @@ pub(crate) fn build_near_provider(config: &NearChainConfig) -> Result<NearChainP
     let mut relayers = Vec::with_capacity(config.inner.relayers.len());
     for relayer in &config.inner.relayers {
         let built = NearRelayer::from_secret_key(&relayer.account_id, &relayer.secret_key)
-            .map_err(|e| AppError::chain_with("failed to parse NEAR relayer secret key", e))?;
+            .map_err(|e| {
+                AppError::chain_with(
+                    format!("failed to parse NEAR relayer '{}'", relayer.account_id),
+                    e,
+                )
+            })?;
         relayers.push(built);
     }
 
@@ -129,6 +134,27 @@ mod tests {
             near_scheme_json(&inner),
             Some(serde_json::json!({ "maxSponsoredGas": 42 })),
             "camelCase key"
+        );
+    }
+
+    #[test]
+    fn invalid_relayer_error_names_account() {
+        let config = NearChainConfig {
+            chain_reference: NearChainReference::TESTNET,
+            inner: NearChainConfigInner {
+                rpc: None,
+                relayers: vec![NearRelayerConfig {
+                    account_id: "relayer.testnet".to_owned(),
+                    secret_key: "not-a-key".to_owned(),
+                }],
+                max_sponsored_gas: None,
+            },
+        };
+        let err = build_near_provider(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("failed to parse NEAR relayer 'relayer.testnet'"),
+            "got {err}"
         );
     }
 
