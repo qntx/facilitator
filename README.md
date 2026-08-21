@@ -139,6 +139,7 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
+| `metrics` | | Process `facilitator_http_*` counters/histograms via the [`metrics`](https://docs.rs/metrics/0.24) facade; enables `r402-core/metrics` for `r402_settlement_cache_reserve_total`. No Prometheus bind. Operators install a recorder. |
 
 ```bash
 cargo install facilitator --no-default-features --features chain-eip155

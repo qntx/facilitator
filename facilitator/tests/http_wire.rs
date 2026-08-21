@@ -68,6 +68,30 @@ impl Facilitator for StubFacilitator {
     }
 }
 
+struct ErroringFacilitator;
+
+impl Facilitator for ErroringFacilitator {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("rpc down".into())))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("rpc down".into())))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(SupportedResponse::new()))
+    }
+}
+
 struct FailingSettle;
 
 impl Facilitator for FailingSettle {
@@ -305,6 +329,25 @@ async fn health_ok() {
     let (status, json) = send(stub_app(), req).await;
     assert_eq!(status, StatusCode::OK, "200");
     assert_eq!(json["status"], "ok", "liveness");
+}
+
+#[tokio::test]
+async fn facilitator_error_on_verify_is_200_invalid() {
+    let state: FacilitatorState = Arc::new(ErroringFacilitator);
+    let app = routes().with_state(state);
+    let (status, json) = send(app, json_request("POST", "/verify", &ts_client_body())).await;
+    assert_eq!(status, StatusCode::OK, "protocol error is still 200");
+    assert_eq!(json["isValid"], false, "mapped to Invalid");
+}
+
+#[tokio::test]
+async fn facilitator_error_on_settle_is_200_failure() {
+    let state: FacilitatorState = Arc::new(ErroringFacilitator);
+    let app = routes().with_state(state);
+    let (status, json) = send(app, json_request("POST", "/settle", &ts_client_body())).await;
+    assert_eq!(status, StatusCode::OK, "protocol error is still 200");
+    assert_eq!(json["success"], false, "mapped to Failure");
+    assert_eq!(json["transaction"], "", "empty on failure");
 }
 
 #[tokio::test]

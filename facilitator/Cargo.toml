@@ -27,6 +27,11 @@ telemetry = [
     "dep:tracing-opentelemetry",
     "r402-evm?/telemetry",
 ]
+# HTTP `facilitator_http_*` via the `metrics` facade. Enables r402-core/metrics
+# so SettlementCache emits `r402_settlement_cache_reserve_total`. Off by
+# default. No Prometheus scrape bind (later opt-in). Do not emit
+# `r402_facilitator_*` from this process — those names belong to r402-core.
+metrics = ["dep:metrics", "r402-core/metrics"]
 
 [dependencies]
 axum = { workspace = true }
@@ -42,6 +47,7 @@ toml = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+metrics = { workspace = true, optional = true }
 
 opentelemetry = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, optional = true }

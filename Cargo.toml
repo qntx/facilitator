@@ -35,6 +35,8 @@ tower-http = { version = "0.6.8", features = ["trace", "cors", "timeout"] }
 tracing = "0.1.44"
 tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+# Same facade r402-core uses. Optional; process `metrics` feature pulls it.
+metrics = "0.24"
 url = "2.5.8"
 
 [profile.release]

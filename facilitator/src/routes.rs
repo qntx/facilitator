@@ -5,7 +5,7 @@
 //! bodies. HTTP 400 is reserved for Axum `JsonRejection`.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
@@ -68,19 +68,26 @@ async fn post_verify(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<VerifyRequest>, JsonRejection>,
 ) -> impl IntoResponse {
+    let started = Instant::now();
     let Ok(Json(request)) = body else {
+        crate::metrics::record_verify("error", started.elapsed());
         return invalid_request_body();
     };
     if let Some(resp) = classify_verify_envelope(&request) {
+        crate::metrics::record_verify("invalid", started.elapsed());
         return (StatusCode::OK, Json(resp)).into_response();
     }
-    let response = match Facilitator::verify(&facilitator, request).await {
-        Ok(resp) => resp,
+    let (response, result) = match Facilitator::verify(&facilitator, request).await {
+        Ok(resp) => {
+            let result = if resp.is_valid() { "valid" } else { "invalid" };
+            (resp, result)
+        }
         Err(ref error) => {
             tracing::warn!(?error, "verification failed");
-            VerifyResponse::from_facilitator_error(error)
+            (VerifyResponse::from_facilitator_error(error), "error")
         }
     };
+    crate::metrics::record_verify(result, started.elapsed());
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -90,20 +97,34 @@ async fn post_settle(
     State(facilitator): State<FacilitatorState>,
     body: Result<Json<SettleRequest>, JsonRejection>,
 ) -> impl IntoResponse {
+    let started = Instant::now();
     let Ok(Json(request)) = body else {
+        crate::metrics::record_settle("error", started.elapsed());
         return invalid_request_body();
     };
     if let Some(resp) = classify_settle_envelope(&request) {
+        crate::metrics::record_settle("failure", started.elapsed());
         return (StatusCode::OK, Json(resp)).into_response();
     }
     let network = request.network().to_owned();
-    let response = match Facilitator::settle(&facilitator, request).await {
-        Ok(resp) => resp,
+    let (response, result) = match Facilitator::settle(&facilitator, request).await {
+        Ok(resp) => {
+            let result = if resp.is_success() {
+                "success"
+            } else {
+                "failure"
+            };
+            (resp, result)
+        }
         Err(ref error) => {
             tracing::warn!(?error, "settlement failed");
-            SettleResponse::from_facilitator_error(error, network)
+            (
+                SettleResponse::from_facilitator_error(error, network),
+                "error",
+            )
         }
     };
+    crate::metrics::record_settle(result, started.elapsed());
     (StatusCode::OK, Json(response)).into_response()
 }
 
