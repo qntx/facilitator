@@ -5,7 +5,7 @@ use r402_algorand::chain::{AlgorandChainProvider, AlgorandChainReference};
 use r402_core::chain::ChainId;
 use serde::Deserialize;
 
-use super::reject_rpc_key;
+use super::{nonempty_string, reject_rpc_key};
 use crate::error::AppError;
 
 /// Inner configuration for an Algorand chain (matches TOML structure).
@@ -50,9 +50,12 @@ impl AlgorandChainConfig {
             &value,
             "Algorand uses optional `algod_url` / `algod_token`",
         )?;
-        let inner: AlgorandChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
-            AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
-        })?;
+        let mut inner: AlgorandChainConfigInner =
+            value.try_into().map_err(|e: toml::de::Error| {
+                AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
+            })?;
+        inner.algod_url = nonempty_string(inner.algod_url);
+        inner.algod_token = nonempty_string(inner.algod_token);
         Ok(Self {
             chain_reference,
             inner,
@@ -147,6 +150,21 @@ mod tests {
         let value = toml::from_str(r#"rpc = "https://example.com""#).unwrap();
         let err = AlgorandChainConfig::from_toml(&chain_id(), value).unwrap_err();
         assert!(err.to_string().contains("does not take `rpc`"), "got {err}");
+    }
+
+    #[test]
+    fn blank_algod_url_and_token_are_none() {
+        let value = toml::from_str(
+            r#"
+signers = ["AAAA"]
+algod_url = ""
+algod_token = "  "
+"#,
+        )
+        .unwrap();
+        let config = AlgorandChainConfig::from_toml(&chain_id(), value).unwrap();
+        assert_eq!(config.inner.algod_url, None, "empty algod_url");
+        assert_eq!(config.inner.algod_token, None, "blank algod_token");
     }
 
     #[test]

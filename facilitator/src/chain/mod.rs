@@ -74,3 +74,17 @@ pub(crate) fn require_string_rpc(chain_id: &ChainId, value: &toml::Value) -> Res
         ))),
     }
 }
+
+/// Empty/whitespace would override r402 network defaults with a broken endpoint.
+#[cfg(any(
+    feature = "chain-hedera",
+    feature = "chain-algorand",
+    feature = "chain-aptos"
+))]
+#[must_use]
+pub(crate) fn nonempty_string(value: Option<String>) -> Option<String> {
+    value.and_then(|s| {
+        let trimmed = s.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    })
+}

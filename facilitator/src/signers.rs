@@ -366,6 +366,41 @@ signers = ["0xlocal"]
     }
 
     #[test]
+    fn lone_hedera_table_wrapped_and_var_injected() {
+        let toml_str = r#"
+[signers.hedera]
+account_id = "0.0.1234"
+private_key = "$HEDERA_KEY"
+
+[chains."hedera:testnet"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let env = BTreeMap::from([("HEDERA_KEY".to_owned(), "302e-secret".to_owned())]);
+        preprocess_signers_with(&mut doc, mock_lookup(&env)).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("hedera:testnet")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let payers = chain
+            .get("fee_payers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
+        assert_eq!(payers.len(), 1, "lone table wrapped");
+        let row = payers.first().and_then(toml::Value::as_table).unwrap();
+        assert_eq!(
+            row.get("account_id").and_then(toml::Value::as_str),
+            Some("0.0.1234"),
+            "account_id"
+        );
+        assert_eq!(
+            row.get("private_key").and_then(toml::Value::as_str),
+            Some("302e-secret"),
+            "nested $VAR"
+        );
+    }
+
+    #[test]
     fn nested_hedera_table_var_injected() {
         let toml_str = r#"
 [signers]

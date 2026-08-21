@@ -5,7 +5,7 @@ use r402_hedera::HederaFeePayer;
 use r402_hedera::chain::{HederaChainProvider, HederaChainReference};
 use serde::Deserialize;
 
-use super::reject_rpc_key;
+use super::{nonempty_string, reject_rpc_key};
 use crate::error::AppError;
 
 /// TOML `alias_policy` (`reject` | `allow`). Omitted → scheme JSON `None` (crate default Reject).
@@ -80,9 +80,12 @@ impl HederaChainConfig {
             &value,
             "Hedera uses optional `mirror_url` / `node_url`",
         )?;
-        let inner: HederaChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
-            AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
-        })?;
+        let mut inner: HederaChainConfigInner =
+            value.try_into().map_err(|e: toml::de::Error| {
+                AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
+            })?;
+        inner.mirror_url = nonempty_string(inner.mirror_url);
+        inner.node_url = nonempty_string(inner.node_url);
         Ok(Self {
             chain_reference,
             inner,
@@ -210,6 +213,59 @@ alias_policy = "reject"
             config.scheme_config_json(),
             Some(serde_json::json!({ "aliasPolicy": "reject" })),
             "explicit reject is still JSON"
+        );
+    }
+
+    #[test]
+    fn blank_mirror_and_node_urls_are_none() {
+        let value = toml::from_str(
+            r#"
+fee_payers = [{ account_id = "0.0.1234", private_key = "k" }]
+mirror_url = "   "
+node_url = ""
+"#,
+        )
+        .unwrap();
+        let config = HederaChainConfig::from_toml(&chain_id(), value).unwrap();
+        assert_eq!(config.inner.mirror_url, None, "blank mirror_url");
+        assert_eq!(config.inner.node_url, None, "empty node_url");
+    }
+
+    #[test]
+    fn build_rejects_empty_fee_payers() {
+        let value = toml::Value::Table(toml::map::Map::new());
+        let config = HederaChainConfig::from_toml(&chain_id(), value).unwrap();
+        let err = build_hedera_provider(&config).unwrap_err();
+        assert!(
+            err.to_string().contains("no fee_payers configured"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn build_rejects_empty_account_id() {
+        let value =
+            toml::from_str(r#"fee_payers = [{ account_id = "", private_key = "k" }]"#).unwrap();
+        let config = HederaChainConfig::from_toml(&chain_id(), value).unwrap();
+        let err = build_hedera_provider(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("require account_id and private_key"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn build_rejects_empty_private_key() {
+        let value =
+            toml::from_str(r#"fee_payers = [{ account_id = "0.0.1234", private_key = "" }]"#)
+                .unwrap();
+        let config = HederaChainConfig::from_toml(&chain_id(), value).unwrap();
+        let err = build_hedera_provider(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("require account_id and private_key"),
+            "got {err}"
         );
     }
 }

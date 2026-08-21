@@ -5,7 +5,7 @@ use r402_aptos::chain::{AptosChainProvider, AptosChainReference};
 use r402_core::chain::ChainId;
 use serde::Deserialize;
 
-use super::require_string_rpc;
+use super::{nonempty_string, require_string_rpc};
 use crate::error::AppError;
 
 /// Inner configuration for an Aptos chain (matches TOML structure).
@@ -43,9 +43,10 @@ impl AptosChainConfig {
         let chain_reference = AptosChainReference::try_from(chain_id.clone())
             .map_err(|e| AppError::config_with(format!("invalid chain id '{chain_id}'"), e))?;
         require_string_rpc(chain_id, &value)?;
-        let inner: AptosChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
+        let mut inner: AptosChainConfigInner = value.try_into().map_err(|e: toml::de::Error| {
             AppError::config_with(format!("invalid [chains.\"{chain_id}\"]"), e)
         })?;
+        inner.rpc = nonempty_string(inner.rpc);
         Ok(Self {
             chain_reference,
             inner,
@@ -132,6 +133,19 @@ mod tests {
         let config = AptosChainConfig::from_toml(&chain_id(), value).unwrap();
         assert_eq!(config.scheme_config_json(), None, "default omit");
         assert_eq!(config.inner.rpc, None, "rpc optional");
+    }
+
+    #[test]
+    fn blank_rpc_is_none() {
+        let value = toml::from_str(
+            r#"
+fee_payers = ["00"]
+rpc = "  "
+"#,
+        )
+        .unwrap();
+        let config = AptosChainConfig::from_toml(&chain_id(), value).unwrap();
+        assert_eq!(config.inner.rpc, None, "blank rpc uses network default");
     }
 
     #[test]

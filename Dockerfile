@@ -21,6 +21,11 @@ ARG RUST_VERSION=1.95
 # ------------------ Stage 1: Chef (dependency caching) ----------------------
 FROM rust:${RUST_VERSION}-bookworm AS chef
 
+# hedera-proto (chain-hedera) compiles protobufs; FEATURES may enable it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo install cargo-chef@0.1.71 --locked
 WORKDIR /src

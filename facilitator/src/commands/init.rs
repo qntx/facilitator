@@ -55,13 +55,33 @@ log_level = "info"
 # Global Signers
 #
 # Shared across all chains of the same type.
-# Per-chain overrides are still possible (add `signers` to the
-# individual chain table).
-#
+"#,
+    );
+
+    #[cfg(all(
+        any(feature = "chain-eip155", feature = "chain-algorand"),
+        any(feature = "chain-hedera", feature = "chain-aptos")
+    ))]
+    config.push_str(
+        "# Per-chain overrides: `signers` (eip155/algorand) or `fee_payers` (hedera/aptos).\n",
+    );
+    #[cfg(all(
+        any(feature = "chain-eip155", feature = "chain-algorand"),
+        not(any(feature = "chain-hedera", feature = "chain-aptos"))
+    ))]
+    config.push_str("# Per-chain overrides: add `signers` to the chain table.\n");
+    #[cfg(all(
+        any(feature = "chain-hedera", feature = "chain-aptos"),
+        not(any(feature = "chain-eip155", feature = "chain-algorand"))
+    ))]
+    config.push_str("# Per-chain overrides: add `fee_payers` to the chain table.\n");
+
+    config.push_str(
+        r"#
 # Use environment variable references ($VAR or ${VAR}) for secrets.
 
 [signers]
-"#,
+",
     );
 
     #[cfg(feature = "chain-eip155")]
@@ -109,7 +129,8 @@ receipt_timeout_secs = 20
 # Hedera
 #
 # Key format: "hedera:mainnet" | "hedera:testnet"
-# No `rpc`; optional mirror_url / node_url. alias_policy = "reject" | "allow".
+# Injected field: fee_payers. No `rpc`; optional mirror_url / node_url.
+# alias_policy = "reject" | "allow".
 
 [chains."hedera:testnet"]
 "#,
@@ -121,7 +142,7 @@ receipt_timeout_secs = 20
 # Algorand
 #
 # Key format: "algorand:<genesis-prefix>"
-# No `rpc`; optional algod_url / algod_token / wait_rounds.
+# Injected field: signers. No `rpc`; optional algod_url / algod_token / wait_rounds.
 
 [chains."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
 "#,
@@ -133,7 +154,8 @@ receipt_timeout_secs = 20
 # Aptos
 #
 # Key format: "aptos:1" | "aptos:2"
-# rpc is an optional string URL. sponsor_transactions defaults true.
+# Injected field: fee_payers. rpc is an optional string URL.
+# sponsor_transactions defaults true.
 
 [chains."aptos:2"]
 "#,
