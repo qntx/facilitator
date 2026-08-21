@@ -38,3 +38,20 @@ rpc = [{ http = "https://mainnet.base.org" }]
 
 [chains."eip155:1"]
 rpc = [{ http = "https://ethereum-rpc.publicnode.com" }]
+
+# NEAR exact — compile with --features chain-near
+# [signers].near injects into chain `relayers`. Nested $VAR is resolved.
+# rpc is optional (FastNEAR default). max_sponsored_gas is optional scheme JSON.
+#
+# [signers]
+# near = [{ account_id = "relayer.testnet", secret_key = "$NEAR_SECRET_KEY" }]
+# [chains."near:testnet"]
+# rpc = "https://rpc.testnet.fastnear.com"
+# max_sponsored_gas = 100000000000000
+
+# XRPL exact — compile with --features chain-xrpl
+# No facilitator signer (payer pays fees). [signers].xrpl is a startup error.
+# rpc is optional (default public JSON-RPC for xrpl:0 / xrpl:1 / xrpl:2).
+#
+# [chains."xrpl:1"]
+# rpc = "https://s.altnet.rippletest.net:51234"

@@ -3,6 +3,12 @@
 #[cfg(feature = "chain-eip155")]
 pub(crate) mod eip155;
 
+#[cfg(feature = "chain-near")]
+pub(crate) mod near;
+
+#[cfg(feature = "chain-xrpl")]
+pub(crate) mod xrpl;
+
 /// CAIP-2 namespaces this process knows, including families not compiled in.
 ///
 /// Distinguishes a compiled-out `[chains."solana:…"]` from a typo namespace.

@@ -19,6 +19,11 @@ path = "src/main.rs"
 [features]
 default = ["telemetry", "chain-eip155"]
 chain-eip155 = ["dep:r402-evm", "dep:alloy-network", "dep:alloy-signer-local", "dep:url"]
+chain-near = ["dep:r402-near"]
+chain-xrpl = ["dep:r402-xrpl"]
+# chain-tron is blocked: r402-tron 0.17.1 only implements SchemeBuilder<TronChainProvider>
+# (owned). TronChainProvider is not Clone, and SchemeBuilder<&TronChainProvider> in this
+# binary is orphan-illegal (foreign trait + foreign types).
 telemetry = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -26,6 +31,8 @@ telemetry = [
     "dep:opentelemetry-semantic-conventions",
     "dep:tracing-opentelemetry",
     "r402-evm?/telemetry",
+    "r402-near?/telemetry",
+    "r402-xrpl?/telemetry",
 ]
 
 [dependencies]
@@ -49,6 +56,8 @@ opentelemetry-otlp = { workspace = true, optional = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 r402-evm = { workspace = true, optional = true }
+r402-near = { workspace = true, optional = true }
+r402-xrpl = { workspace = true, optional = true }
 alloy-network = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
 url = { workspace = true, optional = true }

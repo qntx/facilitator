@@ -70,6 +70,18 @@ log_level = "info"
 "#,
     );
 
+    #[cfg(feature = "chain-near")]
+    config.push_str(
+        r#"near = [{ account_id = "relayer.testnet", secret_key = "$NEAR_SECRET_KEY" }]
+"#,
+    );
+
+    #[cfg(feature = "chain-xrpl")]
+    config.push_str(
+        r"# XRPL has no hot wallet. Do not set [signers].xrpl (startup error).
+",
+    );
+
     #[cfg(feature = "chain-eip155")]
     config.push_str(
         r#"
@@ -82,6 +94,34 @@ log_level = "info"
 [chains."eip155:84532"]
 rpc = [{ http = "https://sepolia.base.org" }]
 receipt_timeout_secs = 20
+"#,
+    );
+
+    #[cfg(feature = "chain-near")]
+    config.push_str(
+        r#"
+# NEAR chains
+#
+# Key format: "near:mainnet" | "near:testnet"
+# rpc is optional (chain default public RPC). Relayers inject from [signers].near.
+# Optional max_sponsored_gas becomes scheme JSON maxSponsoredGas.
+
+[chains."near:testnet"]
+# rpc = "https://rpc.testnet.fastnear.com"
+# max_sponsored_gas = 100000000000000
+"#,
+    );
+
+    #[cfg(feature = "chain-xrpl")]
+    config.push_str(
+        r#"
+# XRPL chains
+#
+# Key format: "xrpl:0" (mainnet) | "xrpl:1" (testnet) | "xrpl:2" (devnet)
+# rpc is optional (default public JSON-RPC). No facilitator signer.
+
+[chains."xrpl:1"]
+# rpc = "https://s.altnet.rippletest.net:51234"
 "#,
     );
 
@@ -118,5 +158,28 @@ mod tests {
         let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
         let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
         assert!(chains.contains_key("eip155:84532"), "base sepolia present");
+    }
+
+    #[cfg(feature = "chain-near")]
+    #[test]
+    fn generate_default_config_has_near_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("near:testnet"), "near testnet present");
+        let signers = doc.get("signers").and_then(toml::Value::as_table).unwrap();
+        assert!(signers.contains_key("near"), "near signers");
+    }
+
+    #[cfg(feature = "chain-xrpl")]
+    #[test]
+    fn generate_default_config_has_xrpl_chain() {
+        let config_str = generate_default_config();
+        let doc: BTreeMap<String, toml::Value> = toml::from_str(&config_str).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        assert!(chains.contains_key("xrpl:1"), "xrpl testnet present");
+        if let Some(signers) = doc.get("signers").and_then(toml::Value::as_table) {
+            assert!(!signers.contains_key("xrpl"), "no xrpl signer");
+        }
     }
 }

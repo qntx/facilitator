@@ -8,12 +8,15 @@ use std::str::FromStr;
 use r402_core::chain::ChainId;
 use serde::Deserialize;
 
-use crate::chain::family_feature;
-use crate::error::AppError;
-use crate::signers;
-
 #[cfg(feature = "chain-eip155")]
 use crate::chain::eip155::Eip155ChainConfig;
+use crate::chain::family_feature;
+#[cfg(feature = "chain-near")]
+use crate::chain::near::NearChainConfig;
+#[cfg(feature = "chain-xrpl")]
+use crate::chain::xrpl::XrplChainConfig;
+use crate::error::AppError;
+use crate::signers;
 
 /// Server configuration combining host/port and chain configs.
 #[derive(Debug, Clone)]
@@ -34,6 +37,12 @@ pub(crate) struct ChainsConfig {
     /// EIP-155 chains, in TOML key order.
     #[cfg(feature = "chain-eip155")]
     eip155: Vec<Eip155ChainConfig>,
+    /// NEAR chains, in TOML key order.
+    #[cfg(feature = "chain-near")]
+    near: Vec<NearChainConfig>,
+    /// XRPL chains, in TOML key order.
+    #[cfg(feature = "chain-xrpl")]
+    xrpl: Vec<XrplChainConfig>,
 }
 
 impl ChainsConfig {
@@ -42,6 +51,20 @@ impl ChainsConfig {
     #[must_use]
     pub(crate) fn eip155(&self) -> &[Eip155ChainConfig] {
         &self.eip155
+    }
+
+    /// NEAR chain configs.
+    #[cfg(feature = "chain-near")]
+    #[must_use]
+    pub(crate) fn near(&self) -> &[NearChainConfig] {
+        &self.near
+    }
+
+    /// XRPL chain configs.
+    #[cfg(feature = "chain-xrpl")]
+    #[must_use]
+    pub(crate) fn xrpl(&self) -> &[XrplChainConfig] {
+        &self.xrpl
     }
 }
 
@@ -164,6 +187,10 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
 
     #[cfg(feature = "chain-eip155")]
     let mut eip155 = Vec::new();
+    #[cfg(feature = "chain-near")]
+    let mut near = Vec::new();
+    #[cfg(feature = "chain-xrpl")]
+    let mut xrpl = Vec::new();
 
     for (key, value) in raw {
         let chain_id = ChainId::from_str(&key)
@@ -171,6 +198,10 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
         match chain_id.namespace() {
             #[cfg(feature = "chain-eip155")]
             "eip155" => eip155.push(Eip155ChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-near")]
+            "near" => near.push(NearChainConfig::from_toml(&chain_id, value)?),
+            #[cfg(feature = "chain-xrpl")]
+            "xrpl" => xrpl.push(XrplChainConfig::from_toml(&chain_id, value)?),
             other => {
                 if let Some(feature) = family_feature(other) {
                     return Err(AppError::config(format!(
@@ -187,6 +218,10 @@ fn parse_chains(raw: BTreeMap<String, toml::Value>) -> Result<ChainsConfig, AppE
     Ok(ChainsConfig {
         #[cfg(feature = "chain-eip155")]
         eip155,
+        #[cfg(feature = "chain-near")]
+        near,
+        #[cfg(feature = "chain-xrpl")]
+        xrpl,
     })
 }
 
@@ -263,6 +298,78 @@ rpc = [{ http = "https://sepolia.base.org" }]
             chain.inner.signers.as_slice(),
             &["0xabc".to_owned()],
             "injected signer"
+        );
+    }
+
+    #[cfg(not(feature = "chain-near"))]
+    #[test]
+    fn parse_rejects_compiled_out_near() {
+        let raw = r#"
+[chains."near:testnet"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'near'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-near")]
+    #[test]
+    fn parse_near_injects_relayers() {
+        let raw = r#"
+[signers]
+near = [{ account_id = "relayer.testnet", secret_key = "ed25519:literal" }]
+[chains."near:testnet"]
+max_sponsored_gas = 42
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().near().first().expect("one near chain");
+        assert_eq!(chain.inner.rpc, None, "rpc optional");
+        assert_eq!(chain.inner.max_sponsored_gas, Some(42), "gas");
+        assert_eq!(chain.inner.relayers.len(), 1, "injected");
+        let relayer = chain.inner.relayers.first().expect("relayer");
+        assert_eq!(relayer.account_id, "relayer.testnet", "account");
+        assert_eq!(relayer.secret_key, "ed25519:literal", "key");
+    }
+
+    #[cfg(not(feature = "chain-xrpl"))]
+    #[test]
+    fn parse_rejects_compiled_out_xrpl() {
+        let raw = r#"
+[chains."xrpl:1"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("compiled-out family 'xrpl'"),
+            "got {err}"
+        );
+    }
+
+    #[cfg(feature = "chain-xrpl")]
+    #[test]
+    fn parse_xrpl_with_no_signer() {
+        let raw = r#"
+[chains."xrpl:1"]
+"#;
+        let config = parse_config_toml(raw).unwrap();
+        let chain = config.chains().xrpl().first().expect("one xrpl chain");
+        assert_eq!(chain.inner.rpc, None, "rpc optional");
+    }
+
+    #[test]
+    fn parse_rejects_signers_xrpl() {
+        let raw = r#"
+[signers]
+xrpl = "nope"
+[chains."eip155:84532"]
+rpc = [{ http = "https://example.com" }]
+signers = ["0xabc"]
+"#;
+        let err = parse_config_toml(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("[signers].xrpl is invalid"),
+            "got {err}"
         );
     }
 

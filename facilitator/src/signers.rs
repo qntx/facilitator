@@ -98,6 +98,7 @@ pub(crate) fn preprocess_signers_with(
     };
 
     let evm_signers = signers.get("evm").cloned().map(wrap_evm_signers);
+    let near_relayers = signers.get("near").cloned();
 
     if let Some(toml::Value::Table(chains)) = doc.get_mut("chains") {
         for (chain_id, chain_val) in chains.iter_mut() {
@@ -109,6 +110,12 @@ pub(crate) fn preprocess_signers_with(
                 && let Some(val) = evm_signers.as_ref()
             {
                 chain_table.insert("signers".to_owned(), val.clone());
+            }
+            if chain_id.starts_with("near:")
+                && !chain_table.contains_key("relayers")
+                && let Some(val) = near_relayers.as_ref()
+            {
+                chain_table.insert("relayers".to_owned(), val.clone());
             }
         }
     }
@@ -334,7 +341,65 @@ signers = ["0xlocal"]
 xrpl = "nope"
 "#;
         let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
-        assert!(preprocess_signers(&mut doc).is_err(), "xrpl forbidden");
+        let err = preprocess_signers(&mut doc).unwrap_err();
+        assert!(
+            err.to_string().contains("[signers].xrpl is invalid"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn near_nested_var_injected() {
+        let toml_str = r#"
+[signers]
+near = [{ account_id = "relayer.testnet", secret_key = "$NEAR_KEY" }]
+
+[chains."near:testnet"]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        let env = BTreeMap::from([("NEAR_KEY".to_owned(), "ed25519:secret".to_owned())]);
+        preprocess_signers_with(&mut doc, mock_lookup(&env)).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("near:testnet")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let relayers = chain
+            .get("relayers")
+            .and_then(toml::Value::as_array)
+            .unwrap();
+        let key = relayers
+            .first()
+            .and_then(toml::Value::as_table)
+            .and_then(|t| t.get("secret_key"))
+            .and_then(toml::Value::as_str);
+        assert_eq!(key, Some("ed25519:secret"), "nested $VAR inject");
+    }
+
+    #[test]
+    fn per_chain_near_relayers_not_overridden() {
+        let toml_str = r#"
+[signers]
+near = [{ account_id = "global.testnet", secret_key = "ed25519:global" }]
+
+[chains."near:testnet"]
+relayers = [{ account_id = "local.testnet", secret_key = "ed25519:local" }]
+"#;
+        let mut doc: BTreeMap<String, toml::Value> = toml::from_str(toml_str).unwrap();
+        preprocess_signers(&mut doc).unwrap();
+        let chains = doc.get("chains").and_then(toml::Value::as_table).unwrap();
+        let chain = chains
+            .get("near:testnet")
+            .and_then(toml::Value::as_table)
+            .unwrap();
+        let account = chain
+            .get("relayers")
+            .and_then(toml::Value::as_array)
+            .and_then(|a| a.first())
+            .and_then(toml::Value::as_table)
+            .and_then(|t| t.get("account_id"))
+            .and_then(toml::Value::as_str);
+        assert_eq!(account, Some("local.testnet"), "per-chain wins");
     }
 
     #[test]

@@ -21,7 +21,7 @@
 
 The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
 
-Built on [r402](https://github.com/qntx/r402) **0.17.1**. This 1.0.0 process ships **EIP-155 exact** only; Solana and extra EVM schemes land in later PRs. See [Security](SECURITY.md) before using in production.
+Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features ship **EIP-155 exact**. NEAR and XRPL exact are optional Cargo features (`chain-near`, `chain-xrpl`). Solana and extra EVM schemes land in later PRs. See [Security](SECURITY.md) before using in production.
 
 ## Quick Start
 
@@ -131,17 +131,23 @@ HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`.
 | Family | This build | Notes |
 | --- | --- | --- |
 | **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
-| **Solana (SVM)** | later PR | Not compiled in 1.0.0-pr1 default features |
+| **NEAR exact** | `--features chain-near` | Relayers from `[signers].near` (`account_id` + `secret_key`) |
+| **XRPL exact** | `--features chain-xrpl` | No facilitator signer; `[signers].xrpl` is a startup error |
+| **Solana (SVM)** | later PR | Not compiled in default features |
+| **Tron exact** | blocked | r402-tron 0.17.1 has no `SchemeBuilder<&TronChainProvider>` |
 
 ## Feature Flags
 
 | Feature | Default | Description |
 | --- | --- | --- |
 | `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
+| `chain-near` | | NEAR exact via [r402-near](https://crates.io/crates/r402-near) 0.17.1 |
+| `chain-xrpl` | | XRPL exact via [r402-xrpl](https://crates.io/crates/r402-xrpl) 0.17.1 |
 | `telemetry` | ✓ | OpenTelemetry tracing and metrics |
 
 ```bash
 cargo install facilitator --no-default-features --features chain-eip155
+cargo install facilitator --features chain-near,chain-xrpl
 ```
 
 ## Security
