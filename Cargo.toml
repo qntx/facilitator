@@ -45,7 +45,7 @@ thiserror = "2.0.18"
 tokio = { version = "1.51.1", features = ["rt-multi-thread", "macros", "signal"] }
 toml = "1.1.2"
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6.8", features = ["trace", "cors", "timeout"] }
+tower-http = { version = "0.7.0", features = ["trace", "cors", "timeout"] }
 tracing = "0.1.44"
 tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
