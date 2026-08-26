@@ -2853,7 +2853,7 @@ dependencies = [
  "alloy-network",
  "alloy-signer-local",
  "axum 0.8.9",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bs58 0.5.1",
  "clap",
  "dotenvy",
