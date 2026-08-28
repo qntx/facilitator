@@ -14,16 +14,22 @@ ignore = []
 confidence-threshold = 0.8
 allow                = [
     "MIT",
+    "MIT-0",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "BSD-1-Clause",
+    "ISC",
     "CC0-1.0",
     "Unlicense",
     "Zlib",
     "MPL-2.0",
     "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "BSL-1.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
 ]
 
 [licenses.private]
