@@ -5,8 +5,17 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   docker:
-    uses: qntx/workflows/.github/workflows/docker.yml@main
+    uses: qntx/workflows/.github/workflows/publish-container.yml@v2.0.0
+    permissions:
+      contents: read
+      packages: write
     with:
       no-cache: true
+      attest: false
+      platforms: linux/amd64
