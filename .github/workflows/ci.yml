@@ -18,4 +18,3 @@ jobs:
       submodules: true
       # hedera-proto (chain-hedera, pulled by --all-features) runs protoc in build.rs
       apt-packages: protobuf-compiler
-      deny: true
