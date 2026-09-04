@@ -76,8 +76,8 @@ fn provider(
     if let Some(url) = &network.mirror_url {
         provider = provider.with_mirror_url(url.as_str());
     }
-    if let Some(url) = &network.node_url {
-        provider = provider.with_node_url(url.as_str());
+    if let Some(address) = &network.node_url {
+        provider = provider.with_node_url(address.as_str());
     }
     Ok(provider)
 }

@@ -209,8 +209,8 @@ pub struct HederaNetwork {
     pub alias_policy: HederaAliasPolicy,
     /// Optional Mirror Node REST URL.
     pub mirror_url: Option<Url>,
-    /// Optional consensus node URL.
-    pub node_url: Option<Url>,
+    /// Optional consensus-node gRPC `host:port` (`Client::for_network`).
+    pub node_url: Option<String>,
 }
 
 /// Parsed Algorand `[network."<caip2>"]`.
@@ -372,7 +372,7 @@ struct RawHederaNetwork {
     /// Optional Mirror Node REST URL.
     #[serde(default)]
     mirror_url: Option<String>,
-    /// Optional consensus node URL.
+    /// Optional consensus-node gRPC `host:port`.
     #[serde(default)]
     node_url: Option<String>,
 }
@@ -544,7 +544,10 @@ fn parse_hedera(chain_id: &ChainId, value: toml::Value) -> Result<HederaNetwork,
         schemes,
         alias_policy: raw.alias_policy.unwrap_or_default(),
         mirror_url: raw.mirror_url.map(|url| parse_http_url(&url)).transpose()?,
-        node_url: raw.node_url.map(|url| parse_http_url(&url)).transpose()?,
+        node_url: raw
+            .node_url
+            .map(|url| parse_hedera_node_address(chain_id, &url))
+            .transpose()?,
     })
 }
 
@@ -739,6 +742,49 @@ pub(crate) fn parse_http_url(raw: &str) -> Result<Url, Error> {
             "RPC URL '{raw}' must be http or https (got '{other}')"
         ))),
     }
+}
+
+/// Hiero `Client::for_network` keys are gRPC `host:port`, then `tcp://{host:port}`.
+#[cfg(feature = "hedera")]
+fn parse_hedera_node_address(chain_id: &ChainId, raw: &str) -> Result<String, Error> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `node_url` must be a non-empty host:port"
+        )));
+    }
+    if trimmed.contains("://") || trimmed.chars().any(char::is_whitespace) {
+        return Err(hedera_node_address_error(chain_id, trimmed));
+    }
+    if split_host_port(trimmed).is_none() {
+        return Err(hedera_node_address_error(chain_id, trimmed));
+    }
+    Ok(trimmed.to_owned())
+}
+
+#[cfg(feature = "hedera")]
+fn hedera_node_address_error(chain_id: &ChainId, raw: &str) -> Error {
+    Error::config(format!(
+        "[network.\"{chain_id}\"] `node_url` must be host:port (got '{raw}')"
+    ))
+}
+
+#[cfg(feature = "hedera")]
+fn split_host_port(raw: &str) -> Option<(&str, u16)> {
+    if let Some(rest) = raw.strip_prefix('[') {
+        let (host, port) = rest.split_once("]:")?;
+        if host.is_empty() {
+            return None;
+        }
+        let port = port.parse().ok()?;
+        return Some((host, port));
+    }
+    let (host, port) = raw.rsplit_once(':')?;
+    if host.is_empty() || host.contains(':') {
+        return None;
+    }
+    let port = port.parse().ok()?;
+    Some((host, port))
 }
 
 /// Resolve `rpc_env` through `lookup`.

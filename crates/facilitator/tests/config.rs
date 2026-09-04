@@ -444,6 +444,54 @@ schemes = ["exact"]
         facilitator::HederaAliasPolicy::Reject,
         "default"
     );
+    assert_eq!(hedera.node_url, None, "omit node_url");
+}
+
+#[cfg(feature = "hedera")]
+#[test]
+fn hedera_node_url_host_port_ok() {
+    let raw = r#"
+[signer.hedera_fee]
+source = "env"
+env = "HEDERA_KEY"
+[network."hedera:testnet"]
+fee_payers = [{ account_id = "0.0.5001", signer = "hedera_fee" }]
+schemes = ["exact"]
+node_url = "0.testnet.hedera.com:50211"
+"#;
+    let cfg = parse_config_toml(raw).expect("host:port");
+    let hedera = cfg.networks.iter().find_map(|net| {
+        if let Network::Hedera(hedera) = net {
+            Some(hedera)
+        } else {
+            None
+        }
+    });
+    let hedera = hedera.expect("hedera network");
+    assert_eq!(
+        hedera.node_url.as_deref(),
+        Some("0.testnet.hedera.com:50211"),
+        "gRPC host:port"
+    );
+}
+
+#[cfg(feature = "hedera")]
+#[test]
+fn hedera_node_url_https_rejected() {
+    let raw = r#"
+[signer.hedera_fee]
+source = "env"
+env = "HEDERA_KEY"
+[network."hedera:testnet"]
+fee_payers = [{ account_id = "0.0.5001", signer = "hedera_fee" }]
+schemes = ["exact"]
+node_url = "https://testnet.hedera.com"
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("`node_url` must be host:port"),
+        "got {err}"
+    );
 }
 
 #[cfg(not(feature = "avm"))]
