@@ -1,0 +1,49 @@
+# config.example.toml — x402 facilitator 0.7 (r402 0.20)
+# Secrets: env or file. Literals for private keys are a startup error.
+
+[http]
+listen = "127.0.0.1:8080"
+verify_timeout = "30s"
+settle_timeout = "30s"
+body_limit_bytes = 262144
+metrics_listen = "127.0.0.1:9090"   # Docker/k8s: 0.0.0.0:9090 or FACILITATOR_HTTP_METRICS_LISTEN
+# cors_origins = []   # empty / omitted = no CORS layer
+
+# [http.auth]
+# bearer_env = "FACILITATOR_API_TOKEN"
+
+[log]
+level = "info"           # RUST_LOG wins
+format = "json"          # json | compact
+
+[signer.evm_hot]
+source = "env"
+env = "FACILITATOR_EVM_KEY"          # 0x-prefixed hex secp256k1
+
+# Optional second EVM key for round-robin (r402-evm already round-robins).
+# [signer.evm_hot_2]
+# source = "env"
+# env = "FACILITATOR_EVM_KEY_2"
+
+[scheme.evm]
+clock_skew_secs = 6
+eip6492_allowed_factories = []       # fail-closed (SDK default)
+erc20_approval_gas_sponsoring = false
+# builder_code = { builder_code = "…", service_code = "…" }  # BuilderCodeFacilitatorConfig
+
+# Explicit scheme lists. Omitted `schemes` is a startup error (no hidden exact-only default).
+[network."eip155:84532"]
+rpc = ["https://sepolia.base.org"]
+# rpc = [{ http = "https://sepolia.base.org", rate_limit = 50 }]
+# rpc_env = "BASE_SEPOLIA_RPC"   # mutually exclusive with `rpc`; value is one http(s) URL
+signers = ["evm_hot"]
+schemes = ["exact", "upto"]
+eip1559 = true
+flashblocks = false
+receipt_timeout_secs = 20
+
+[network."eip155:8453"]
+rpc = ["https://mainnet.base.org"]
+signers = ["evm_hot"]
+schemes = ["exact", "upto"]
+receipt_timeout_secs = 20
