@@ -1,4 +1,4 @@
-//! Compose: EVM exact construction, `/supported` pass-through, startup errors.
+//! Compose: EVM exact/upto and SVM exact construction, `/supported` pass-through.
 
 #![allow(
     unused_crate_dependencies,
@@ -23,9 +23,22 @@ use r402_protocol::payment::SupportedResponse;
 /// Anvil account 0. Construction-only; never broadcast in these tests.
 const ANVIL_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const ANVIL_ADDR: &str = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+/// Deterministic 64-byte Solana keypair (`Keypair::new_from_array([7u8; 32])`).
+#[cfg(feature = "svm")]
+const SVM_KEY: &str =
+    "99eUso3aSbE9tqGSTXzo3TLfKb9RkMTURrHKQ1K7Zh3StnzFNUx8FKCPPPPpR479qsw5zv2WNBKmgiz7WqgAJfM";
+#[cfg(feature = "svm")]
+const SVM_ADDR: &str = "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB";
+#[cfg(feature = "svm")]
+const SVM_DEVNET: &str = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 
 fn lookup(key: &str) -> Option<String> {
-    (key == "FACILITATOR_EVM_KEY").then(|| ANVIL_KEY.to_owned())
+    match key {
+        "FACILITATOR_EVM_KEY" => Some(ANVIL_KEY.to_owned()),
+        #[cfg(feature = "svm")]
+        "FACILITATOR_SVM_KEY" => Some(SVM_KEY.to_owned()),
+        _ => None,
+    }
 }
 
 fn evm_doc(scheme_evm: &str, extra_network: &str) -> String {
@@ -67,7 +80,7 @@ fn scheme_evm(body: &str) -> String {
 #[tokio::test]
 async fn exact_supported_passes_through_sdk_kinds_and_signers() {
     let cfg = parse_config_toml(&evm_doc("", "")).expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_exact_kind(&supported, "eip155:84532");
     let signers = supported
@@ -93,7 +106,7 @@ schemes = ["exact"]
 receipt_timeout_secs = 20
 "#;
     let cfg = parse_config_toml(&evm_doc("", extra)).expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(supported.kinds.len(), 2, "one kind per network");
     assert_exact_kind_at(&supported, 0, "eip155:84532");
@@ -120,7 +133,7 @@ builder_code = { builder_code = "wallet", service_code = "svc" }"#,
         "",
     ))
     .expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     let extensions: Vec<&str> = supported.extensions.iter().map(AsRef::as_ref).collect();
     assert_eq!(
@@ -135,7 +148,7 @@ builder_code = { builder_code = "wallet", service_code = "svc" }"#,
 async fn exact_and_upto_concat_kinds_and_keep_upto_extra() {
     let cfg =
         parse_config_toml(&evm_doc_with_schemes("", "", r#"["exact", "upto"]"#)).expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(supported.kinds.len(), 2, "exact then upto");
     assert_exact_kind_at(&supported, 0, "eip155:84532");
@@ -155,7 +168,7 @@ async fn exact_and_upto_concat_kinds_and_keep_upto_extra() {
 #[tokio::test]
 async fn upto_only_supported_passes_through_extra() {
     let cfg = parse_config_toml(&evm_doc_with_schemes("", "", r#"["upto"]"#)).expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(supported.kinds.len(), 1, "upto only");
     assert_upto_kind_at(&supported, 0, "eip155:84532");
@@ -166,7 +179,7 @@ async fn upto_only_supported_passes_through_extra() {
 async fn auth_capture_only_supported_passes_through_sdk_kind() {
     let cfg =
         parse_config_toml(&evm_doc_with_schemes("", "", r#"["auth-capture"]"#)).expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(supported.kinds.len(), 1, "auth-capture only");
     assert_auth_capture_kind_at(&supported, 0, "eip155:84532");
@@ -186,7 +199,7 @@ async fn auth_capture_only_supported_passes_through_sdk_kind() {
 async fn batch_settlement_supported_passes_through_sdk_kinds() {
     let cfg =
         parse_config_toml(&evm_doc_with_schemes("", "", r#"["batch-settlement"]"#)).expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(supported.kinds.len(), 1, "batch-settlement only");
     assert_batch_settlement_kind_at(&supported, 0, "eip155:84532");
@@ -210,7 +223,7 @@ async fn exact_upto_and_auth_capture_concat_kinds() {
         r#"["exact", "upto", "auth-capture"]"#,
     ))
     .expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(
         supported.kinds.len(),
@@ -240,7 +253,7 @@ async fn exact_upto_and_batch_settlement_concat_kinds() {
         r#"["exact", "upto", "batch-settlement"]"#,
     ))
     .expect("parse");
-    let map = build(&cfg, &lookup).expect("construct");
+    let map = build(&cfg, &lookup).await.expect("construct");
     let supported = Facilitator::supported(&map).await.expect("supported");
     assert_eq!(
         supported.kinds.len(),
@@ -255,43 +268,129 @@ async fn exact_upto_and_batch_settlement_concat_kinds() {
 
 
 #[cfg(feature = "svm")]
-#[test]
-fn listed_svm_exact_without_constructor_is_startup_error() {
-    let raw = r#"
-[http]
-listen = "127.0.0.1:8080"
-settle_timeout = "30s"
+#[tokio::test]
+async fn svm_exact_supported_passes_through_feepayer_and_signers() {
+    let cfg = parse_config_toml(&svm_doc("", "")).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "one kind");
+    assert_svm_exact_kind_at(&supported, 0, SVM_DEVNET, SVM_ADDR);
+    let signers = supported
+        .signers
+        .get("solana:*")
+        .expect("solana:* signer key");
+    assert_eq!(
+        signers.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),
+        [SVM_ADDR],
+        "fee payer"
+    );
+    assert!(supported.extensions.is_empty(), "no extra extensions");
+}
 
-[signer.svm_fee]
-source = "env"
-env = "FACILITATOR_SVM_KEY"
+#[cfg(all(feature = "evm", feature = "svm"))]
+#[tokio::test]
+async fn evm_and_svm_concat_kinds_and_union_signer_keys() {
+    let cfg = parse_config_toml(&evm_doc("", &svm_network_tables())).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 2, "evm exact then svm exact");
+    assert_exact_kind_at(&supported, 0, "eip155:84532");
+    assert_svm_exact_kind_at(&supported, 1, SVM_DEVNET, SVM_ADDR);
+    assert!(supported.signers.contains_key("eip155:*"), "eip155:* union");
+    assert!(supported.signers.contains_key("solana:*"), "solana:* union");
+}
 
-[network."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
-rpc = "http://127.0.0.1:1"
-fee_payer = "svm_fee"
-schemes = ["exact"]
-"#;
-    let cfg = parse_config_toml(raw).expect("svm tables parse");
-    let err = build(&cfg, &|_| Some("unused".to_owned())).expect_err("svm exact not constructed");
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn listed_svm_upto_without_constructor_is_startup_error() {
+    let raw = svm_doc("", "").replace("schemes = [\"exact\"]", "schemes = [\"exact\", \"upto\"]");
+    let cfg = parse_config_toml(&raw).expect("upto is a known SVM name");
+    let err = build(&cfg, &lookup)
+        .await
+        .expect_err("svm upto has no constructor in this PR");
     assert!(
-        err.to_string().contains("is not enabled in this build"),
+        err.to_string().contains(
+            "scheme 'upto' on solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1 is not enabled in this build"
+        ),
         "got {err}"
     );
 }
 
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn path2_enabled_is_startup_error() {
+    let cfg = parse_config_toml(&svm_doc(
+        "[scheme.svm.exact]\nenable_smart_wallet_verification = true\n",
+        "",
+    ))
+    .expect("parse");
+    let err = build(&cfg, &lookup)
+        .await
+        .expect_err("Path 2 has no shared-cache API");
+    assert!(
+        err.to_string()
+            .contains("enable_smart_wallet_verification = true"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn path2_network_overlay_is_startup_error() {
+    let cfg = parse_config_toml(&svm_doc(
+        "",
+        "[network.\"solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1\".exact]\nenable_smart_wallet_verification = true\n",
+    ))
+    .expect("parse");
+    let err = build(&cfg, &lookup)
+        .await
+        .expect_err("network overlay Path 2");
+    assert!(
+        err.to_string()
+            .contains("enable_smart_wallet_verification = true"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn invalid_svm_keypair_is_startup_error() {
+    let cfg = parse_config_toml(&svm_doc("", "")).expect("parse");
+    let err = build(&cfg, &|key| {
+        (key == "FACILITATOR_SVM_KEY").then(|| "not-a-keypair".to_owned())
+    })
+    .await
+    .expect_err("bad key");
+    assert!(
+        err.to_string()
+            .contains("signer 'svm_fee' is not a valid base58 Solana keypair"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn missing_svm_signer_secret_is_startup_error() {
+    let cfg = parse_config_toml(&svm_doc("", "")).expect("parse");
+    let err = build(&cfg, &|_| None).await.expect_err("missing key");
+    assert!(err.to_string().contains("FACILITATOR_SVM_KEY"), "got {err}");
+}
+
 #[cfg(feature = "evm")]
-#[test]
-fn missing_signer_secret_is_startup_error() {
+#[tokio::test]
+async fn missing_signer_secret_is_startup_error() {
     let cfg = parse_config_toml(&evm_doc("", "")).expect("parse");
-    let err = build(&cfg, &|_| None).expect_err("missing key");
+    let err = build(&cfg, &|_| None).await.expect_err("missing key");
     assert!(err.to_string().contains("FACILITATOR_EVM_KEY"), "got {err}");
 }
 
 #[cfg(feature = "evm")]
-#[test]
-fn invalid_secp256k1_key_is_startup_error() {
+#[tokio::test]
+async fn invalid_secp256k1_key_is_startup_error() {
     let cfg = parse_config_toml(&evm_doc("", "")).expect("parse");
-    let err = build(&cfg, &|_| Some("not-a-key".to_owned())).expect_err("bad key");
+    let err = build(&cfg, &|_| Some("not-a-key".to_owned()))
+        .await
+        .expect_err("bad key");
     assert!(
         err.to_string()
             .contains("signer 'evm_hot' is not a valid secp256k1 hex key"),
@@ -320,6 +419,44 @@ fn example_toml_lists_exact_and_upto() {
     }
 }
 
+#[cfg(feature = "svm")]
+fn svm_doc(scheme_svm: &str, extra: &str) -> String {
+    format!(
+        r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.svm_fee]
+source = "env"
+env = "FACILITATOR_SVM_KEY"
+
+{scheme_svm}
+
+[network."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "http://127.0.0.1:1"
+fee_payer = "svm_fee"
+schemes = ["exact"]
+{extra}
+"#
+    )
+}
+
+#[cfg(all(feature = "evm", feature = "svm"))]
+fn svm_network_tables() -> String {
+    r#"
+[signer.svm_fee]
+source = "env"
+env = "FACILITATOR_SVM_KEY"
+
+[network."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "http://127.0.0.1:1"
+fee_payer = "svm_fee"
+schemes = ["exact"]
+"#
+    .to_owned()
+}
+
 fn assert_exact_kind(supported: &SupportedResponse, network: &str) {
     assert_eq!(supported.kinds.len(), 1, "one kind");
     assert_exact_kind_at(supported, 0, network);
@@ -331,6 +468,28 @@ fn assert_exact_kind_at(supported: &SupportedResponse, index: usize, network: &s
     assert_eq!(kind.scheme.as_str(), "exact", "scheme");
     assert_eq!(kind.network.as_str(), network, "network");
     assert_eq!(kind.extra, None, "exact extra is absent");
+}
+
+#[cfg(feature = "svm")]
+fn assert_svm_exact_kind_at(
+    supported: &SupportedResponse,
+    index: usize,
+    network: &str,
+    fee_payer: &str,
+) {
+    let kind = &supported.kinds[index];
+    assert_eq!(kind.x402_version, 2, "V2");
+    assert_eq!(kind.scheme.as_str(), "exact", "scheme");
+    assert_eq!(kind.network.as_str(), network, "network");
+    let extra = kind
+        .extra
+        .as_ref()
+        .expect("svm exact extra.feePayer must not be stripped");
+    assert_eq!(extra["feePayer"], fee_payer, "feePayer pass-through");
+    assert!(
+        extra.get("features").is_none(),
+        "Path 2 off: no smartWalletSupported"
+    );
 }
 
 fn assert_upto_kind_at(supported: &SupportedResponse, index: usize, network: &str) {

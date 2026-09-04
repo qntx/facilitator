@@ -1,5 +1,5 @@
-# config.example.full.toml — documentation for families this binary does not
-# yet construct. `facilitator init` writes config.example.toml, not this file.
+# config.example.full.toml — EVM exact+upto plus SVM exact (this build
+# constructs both). `facilitator init` writes config.example.toml (EVM only).
 #
 # Secrets: env or file. Literals for private keys are a startup error.
 
@@ -37,7 +37,7 @@ signers = ["evm_hot"]
 schemes = ["exact", "upto"]
 receipt_timeout_secs = 20
 
-# --- SVM (constructed in a later PR; parsed as documentation) ---
+# --- SVM exact (CU limits on the network table, not [scheme.svm.exact]) ---
 [signer.svm_fee]
 source = "file"
 path = "/run/secrets/solana.key"

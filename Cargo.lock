@@ -2402,6 +2402,7 @@ dependencies = [
  "r402-svm",
  "serde",
  "serde_json",
+ "solana-keypair",
  "subtle",
  "thiserror 2.0.20",
  "tokio",
