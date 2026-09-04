@@ -36,6 +36,8 @@ pub use config::NamedAccount;
 pub use config::NearNetwork;
 #[cfg(feature = "stellar")]
 pub use config::StellarNetwork;
+#[cfg(feature = "experimental-tron")]
+pub use config::TronNetwork;
 #[cfg(feature = "tvm")]
 pub use config::TvmNetwork;
 #[cfg(feature = "xrpl")]

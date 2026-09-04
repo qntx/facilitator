@@ -83,6 +83,7 @@ max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 
 # --- Other exact families (commented: not in the default image) ---
 # Rebuild with --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium.
+# Tron: --features experimental-tron (experimental; not in the default image).
 # Casper is never hosted.
 
 # [signer.near_relayer]
@@ -197,3 +198,17 @@ max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 # # require_finalization = true
 # # finalization_timeout = "60s"
 # # max_expiry_offset_seconds = 600
+
+# [signer.tron_hot]
+# source = "file"
+# path = "/run/secrets/tron.key"
+# encoding = "hex"                   # secp256k1
+#
+# [network."tron:0x2b6653dc"]        # mainnet; nile tron:0xcd8690dc
+# # rpc / rpc_env: exactly one. TronGrid base URL (required; no SDK default).
+# rpc = "https://api.trongrid.io"
+# signer = "tron_hot"
+# schemes = ["exact"]
+# # fee_limit = 100000000            # SUN; compose default 100_000_000
+# # confirmation_timeout = "30s"
+# # confirmation_poll_interval = "1s"

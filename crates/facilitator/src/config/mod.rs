@@ -28,6 +28,8 @@ pub use network::NamedAccount;
 pub use network::NearNetwork;
 #[cfg(feature = "stellar")]
 pub use network::StellarNetwork;
+#[cfg(feature = "experimental-tron")]
+pub use network::TronNetwork;
 #[cfg(feature = "tvm")]
 pub use network::TvmNetwork;
 #[cfg(feature = "xrpl")]
@@ -393,6 +395,10 @@ fn resolve_network_env(
         #[cfg(feature = "concordium")]
         Network::Concordium(net) => {
             let _ = resolve_optional_grpc(&net.chain_id, net.grpc.as_ref(), lookup)?;
+        }
+        #[cfg(feature = "experimental-tron")]
+        Network::Tron(net) => {
+            let _ = resolve_rpc(&net.chain_id, &net.rpc, lookup)?;
         }
     }
     Ok(())

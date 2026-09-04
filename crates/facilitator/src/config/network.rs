@@ -1,6 +1,6 @@
 //! Per-network tables keyed by CAIP-2 id.
 
-#[cfg(feature = "concordium")]
+#[cfg(any(feature = "concordium", feature = "experimental-tron"))]
 use std::time::Duration;
 
 use r402_protocol::{AuthCaptureScheme, BatchSettlementScheme, ChainId, ExactScheme, UptoScheme};
@@ -64,6 +64,9 @@ pub enum Network {
     /// Concordium network.
     #[cfg(feature = "concordium")]
     Concordium(ConcordiumNetwork),
+    /// Tron network.
+    #[cfg(feature = "experimental-tron")]
+    Tron(TronNetwork),
 }
 
 impl Network {
@@ -91,6 +94,8 @@ impl Network {
             Self::Stellar(net) => &net.chain_id,
             #[cfg(feature = "concordium")]
             Self::Concordium(net) => &net.chain_id,
+            #[cfg(feature = "experimental-tron")]
+            Self::Tron(net) => &net.chain_id,
         }
     }
 
@@ -118,6 +123,8 @@ impl Network {
             Self::Stellar(net) => &net.schemes,
             #[cfg(feature = "concordium")]
             Self::Concordium(net) => &net.schemes,
+            #[cfg(feature = "experimental-tron")]
+            Self::Tron(net) => &net.schemes,
         }
     }
 
@@ -145,6 +152,8 @@ impl Network {
             Self::Stellar(net) => &net.signer_names,
             #[cfg(feature = "concordium")]
             Self::Concordium(net) => &net.signer_names,
+            #[cfg(feature = "experimental-tron")]
+            Self::Tron(net) => std::slice::from_ref(&net.signer),
         }
     }
 }
@@ -403,6 +412,26 @@ pub struct ConcordiumNetwork {
     pub finalization_timeout: Option<Duration>,
     /// Spec Rule 7 expiry cap; `None` uses the SDK default.
     pub max_expiry_offset_seconds: Option<u64>,
+}
+
+/// Parsed Tron `[network."<caip2>"]`.
+#[cfg(feature = "experimental-tron")]
+#[derive(Debug, Clone)]
+pub struct TronNetwork {
+    /// CAIP-2 id (`tron:0x2b6653dc` / `tron:0xcd8690dc`).
+    pub chain_id: ChainId,
+    /// `TronGrid` base URL; exactly one of `rpc` / `rpc_env`.
+    pub rpc: RpcConfig,
+    /// Named `[signer.*]` secp256k1 key.
+    pub signer: String,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Settlement `fee_limit` in SUN; `None` uses `100_000_000`.
+    pub fee_limit: Option<u64>,
+    /// Confirmation wait; `None` uses 30s.
+    pub confirmation_timeout: Option<Duration>,
+    /// Confirmation poll interval; `None` uses 1s.
+    pub confirmation_poll_interval: Option<Duration>,
 }
 
 /// RPC source: literal endpoints or one env var.
@@ -698,6 +727,31 @@ struct RawConcordiumAccount {
     signer: String,
 }
 
+#[cfg(feature = "experimental-tron")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTronNetwork {
+    /// Literal `TronGrid` base URL.
+    #[serde(default)]
+    rpc: Option<String>,
+    /// Env name for the `TronGrid` base URL.
+    #[serde(default)]
+    rpc_env: Option<String>,
+    /// Named `[signer.*]` secp256k1 key.
+    signer: String,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Settlement `fee_limit` in SUN.
+    #[serde(default)]
+    fee_limit: Option<u64>,
+    /// Confirmation wait.
+    #[serde(default, with = "humantime_serde::option")]
+    confirmation_timeout: Option<Duration>,
+    /// Confirmation poll interval.
+    #[serde(default, with = "humantime_serde::option")]
+    confirmation_poll_interval: Option<Duration>,
+}
+
 #[cfg(any(feature = "near", feature = "hedera"))]
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -735,6 +789,8 @@ pub(crate) fn parse_network(
         HostableFamily::Stellar => parse_stellar(chain_id, value).map(Network::Stellar),
         #[cfg(feature = "concordium")]
         HostableFamily::Concordium => parse_concordium(chain_id, value).map(Network::Concordium),
+        #[cfg(feature = "experimental-tron")]
+        HostableFamily::Tron => parse_tron(chain_id, value).map(Network::Tron),
     }
 }
 
@@ -1024,6 +1080,35 @@ fn parse_concordium(chain_id: &ChainId, value: toml::Value) -> Result<Concordium
     })
 }
 
+#[cfg(feature = "experimental-tron")]
+fn parse_tron(chain_id: &ChainId, value: toml::Value) -> Result<TronNetwork, Error> {
+    let raw: RawTronNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_tron::chain::TronChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid Tron chain id '{chain_id}'"), err))?;
+    let rpc = require_rpc(
+        chain_id,
+        raw.rpc.as_deref().map(single_rpc).transpose()?,
+        raw.rpc_env,
+    )?;
+    let schemes = require_schemes(chain_id, HostableFamily::Tron, raw.schemes)?;
+    if raw.signer.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `signer` must not be empty"
+        )));
+    }
+    Ok(TronNetwork {
+        chain_id: chain_id.clone(),
+        rpc,
+        signer: raw.signer,
+        schemes,
+        fee_limit: raw.fee_limit,
+        confirmation_timeout: raw.confirmation_timeout,
+        confirmation_poll_interval: raw.confirmation_poll_interval,
+    })
+}
+
 #[cfg(feature = "xrpl")]
 fn reject_xrpl_hot_wallet(chain_id: &ChainId, value: &toml::Value) -> Result<(), Error> {
     let Some(table) = value.as_table() else {
@@ -1149,7 +1234,7 @@ fn single_rpc(url: &str) -> Result<Vec<RpcEndpoint>, Error> {
     Ok(vec![endpoint_from_url(url)?])
 }
 
-/// EVM / SVM: exactly one of `rpc` / `rpc_env`.
+/// EVM / SVM / Tron: exactly one of `rpc` / `rpc_env`.
 fn require_rpc(
     chain_id: &ChainId,
     rpc: Option<Vec<RpcEndpoint>>,
@@ -1290,6 +1375,8 @@ const fn known_scheme_names(family: HostableFamily) -> &'static [&'static str] {
         HostableFamily::Stellar => &[ExactScheme::VALUE],
         #[cfg(feature = "concordium")]
         HostableFamily::Concordium => &[ExactScheme::VALUE],
+        #[cfg(feature = "experimental-tron")]
+        HostableFamily::Tron => &[ExactScheme::VALUE],
     }
 }
 

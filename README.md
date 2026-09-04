@@ -191,7 +191,7 @@ Tron is `experimental-tron` and is not in the default image.
 | `telemetry` | ✓ | Reserved for OTLP |
 | `metrics` | ✓ | Enables `r402-facilitator/metrics` |
 | `near` / `xrpl` / `hedera` / `avm` / `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Host `exact` when the feature is on |
-| `experimental-tron` | | Experimental; not in the default image |
+| `experimental-tron` | | Host `exact` when rebuilt with this feature; not in the default image |
 
 `casper:*` is always a remote-client startup error. There is no `extra-casper` feature.
 

@@ -11,7 +11,8 @@
     feature = "keeta",
     feature = "tvm",
     feature = "stellar",
-    feature = "concordium"
+    feature = "concordium",
+    feature = "experimental-tron"
 ))]
 use r402_protocol::scheme::SchemeId;
 
@@ -76,6 +77,9 @@ pub(crate) enum HostableFamily {
     /// Concordium (`ccd`).
     #[cfg(feature = "concordium")]
     Concordium,
+    /// Tron (experimental).
+    #[cfg(feature = "experimental-tron")]
+    Tron,
 }
 
 /// Namespace string for EIP-155, from the SDK when the `evm` feature is on.
@@ -239,6 +243,22 @@ const fn ccd_namespace() -> &'static str {
     "ccd"
 }
 
+/// Namespace string for Tron.
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "feature-on branch calls SchemeId::namespace, which is not const"
+)]
+fn tron_namespace() -> &'static str {
+    #[cfg(feature = "experimental-tron")]
+    {
+        r402_tron::TronExact.namespace()
+    }
+    #[cfg(not(feature = "experimental-tron"))]
+    {
+        "tron"
+    }
+}
+
 /// Cargo feature name for a known CAIP-2 namespace.
 #[must_use]
 pub(crate) fn family_feature(namespace: &str) -> Option<&'static str> {
@@ -275,10 +295,10 @@ pub(crate) fn family_feature(namespace: &str) -> Option<&'static str> {
     if namespace == ccd_namespace() {
         return Some("concordium");
     }
-    match namespace {
-        "tron" => Some("experimental-tron"),
-        _ => None,
+    if namespace == tron_namespace() {
+        return Some("experimental-tron");
     }
+    None
 }
 
 /// Whether `feature` is compiled into this binary.
@@ -357,6 +377,10 @@ pub(crate) fn classify(namespace: &str) -> FamilyStatus {
     #[cfg(feature = "concordium")]
     if namespace == ccd_namespace() {
         return FamilyStatus::Hostable(HostableFamily::Concordium);
+    }
+    #[cfg(feature = "experimental-tron")]
+    if namespace == tron_namespace() {
+        return FamilyStatus::Hostable(HostableFamily::Tron);
     }
     FamilyStatus::Reserved { feature }
 }
@@ -571,5 +595,26 @@ mod tests {
             ccd_namespace(),
             r402_concordium::ConcordiumExact::new().namespace()
         );
+    }
+
+    #[cfg(not(feature = "experimental-tron"))]
+    #[test]
+    fn tron_compiled_out() {
+        assert_eq!(
+            classify("tron"),
+            FamilyStatus::CompiledOut {
+                feature: "experimental-tron"
+            }
+        );
+    }
+
+    #[cfg(feature = "experimental-tron")]
+    #[test]
+    fn tron_hostable() {
+        assert_eq!(
+            classify("tron"),
+            FamilyStatus::Hostable(HostableFamily::Tron)
+        );
+        assert_eq!(tron_namespace(), r402_tron::TronExact.namespace());
     }
 }
