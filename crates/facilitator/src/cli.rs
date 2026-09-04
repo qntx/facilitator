@@ -110,9 +110,12 @@ fn log_listen(
     metrics: Option<std::net::SocketAddr>,
     drain: Duration,
 ) {
+    // SettlementCache is moka; a second replica splits /settle.
     tracing::info!(
         listen = %protocol,
         drain_secs = drain.as_secs(),
+        settlement_cache = "in-memory",
+        pin_settle = true,
         "facilitator listening"
     );
     if let Some(addr) = metrics {

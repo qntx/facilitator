@@ -95,3 +95,8 @@ spec:
             items:
               - key: evm.key
                 path: evm.key
+              # SVM: mount after solana.key exists in facilitator-secrets and
+              # SVM tables are in the ConfigMap. Missing Secret key fails the pod.
+              # - key: solana.key
+              #   path: solana.key
+
