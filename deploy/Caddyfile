@@ -1,0 +1,39 @@
+# Replace the hostname. Caddy provisions Let's Encrypt on :80/:443.
+# No reverse_proxy transport timeout: Axum settle_timeout (default 30s) is the process cap.
+# Do not proxy /metrics (metrics listen is 9090, not the protocol port).
+
+facilitator.example.com {
+	encode gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		-Server
+	}
+
+	handle /verify {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /settle {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /supported {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /healthz {
+		reverse_proxy facilitator:8080
+	}
+
+	handle /readyz {
+		reverse_proxy facilitator:8080
+	}
+
+	handle {
+		respond "Not Found" 404
+	}
+}

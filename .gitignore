@@ -23,4 +23,5 @@ target
 /3rdparty
 .env
 config.toml
+solana.key
 .ci/

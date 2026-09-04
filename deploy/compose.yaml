@@ -1,0 +1,55 @@
+# Facilitator behind optional Caddy TLS. No Watchtower, no fctl.
+# One replica: SettlementCache is in-memory. Do not --scale.
+#
+#   docker compose -f deploy/compose.yaml up
+#   docker compose -f deploy/compose.yaml --profile tls up
+#
+# Distroless image has no curl; no HEALTHCHECK. Probe HTTP /healthz /readyz.
+
+services:
+  facilitator:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ghcr.io/qntx/facilitator:2.0.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+    environment:
+      FACILITATOR_HTTP_LISTEN: "0.0.0.0:8080"
+      FACILITATOR_HTTP_METRICS_LISTEN: "0.0.0.0:9090"
+      FACILITATOR_EVM_KEY: ${FACILITATOR_EVM_KEY}
+    volumes:
+      - ${FACILITATOR_CONFIG:-../config.example.toml}:/etc/facilitator/config.toml:ro
+    stop_grace_period: 35s
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - facilitator
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

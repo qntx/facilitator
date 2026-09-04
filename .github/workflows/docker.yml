@@ -1,0 +1,61 @@
+name: Docker
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - config.example.toml
+      - compose.yaml
+      - compose.svm.yaml
+      - deploy/**
+      - .github/workflows/docker.yml
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: facilitator:sbom
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: anchore/sbom-action@v0
+        with:
+          image: facilitator:sbom
+          format: cyclonedx-json
+          artifact-name: facilitator-cyclonedx.json
+          output-file: facilitator-cyclonedx.json
+
+  docker:
+    if: github.event_name != 'pull_request'
+    uses: qntx/workflows/.github/workflows/publish-container.yml@v2.0.0
+    permissions:
+      contents: read
+      packages: write
+    with:
+      no-cache: true
+      attest: false
+      platforms: linux/amd64
+      timeout-minutes: 90

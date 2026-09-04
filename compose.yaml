@@ -1,0 +1,25 @@
+# Local facilitator (no proxy). One replica: SettlementCache is in-memory.
+#
+# Default config: config.example.toml (EVM exact+upto).
+# SVM overlay: docker compose -f compose.yaml -f compose.svm.yaml up --build
+#
+# Distroless image has no curl; no HEALTHCHECK. Probe HTTP /healthz /readyz.
+
+services:
+  facilitator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/qntx/facilitator:2.0.0
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      FACILITATOR_HTTP_LISTEN: "0.0.0.0:8080"
+      FACILITATOR_HTTP_METRICS_LISTEN: "0.0.0.0:9090"
+      FACILITATOR_EVM_KEY: ${FACILITATOR_EVM_KEY}
+    volumes:
+      - ${FACILITATOR_CONFIG:-./config.example.toml}:/etc/facilitator/config.toml:ro
+    stop_grace_period: 35s
+    mem_limit: 512m
