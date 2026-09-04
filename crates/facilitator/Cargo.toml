@@ -18,7 +18,13 @@ path = "src/main.rs"
 
 [features]
 default = ["evm", "svm", "telemetry", "metrics"]
-evm = ["dep:r402-evm"]
+evm = [
+    "dep:r402-evm",
+    "dep:r402-extensions",
+    "dep:alloy-network",
+    "dep:alloy-primitives",
+    "dep:alloy-signer-local",
+]
 svm = ["dep:r402-svm"]
 near = []
 xrpl = []
@@ -31,10 +37,13 @@ stellar = []
 concordium = []
 experimental-tron = []
 extra-casper = []
-telemetry = []
+telemetry = ["r402-evm?/telemetry", "r402-svm?/telemetry"]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "r402-facilitator/metrics"]
 
 [dependencies]
+alloy-network = { workspace = true, optional = true }
+alloy-primitives = { workspace = true, optional = true }
+alloy-signer-local = { workspace = true, optional = true }
 axum = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
@@ -56,6 +65,7 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
 r402-evm = { version = "0.19.1", path = "../../../r402/crates/r402-evm", default-features = false, features = ["facilitator"], optional = true }
+r402-extensions = { version = "0.19.1", path = "../../../r402/crates/r402-extensions", default-features = false, features = ["ext-builder-code", "ext-erc20-approval"], optional = true }
 r402-svm = { version = "0.19.1", path = "../../../r402/crates/r402-svm", default-features = false, features = ["facilitator"], optional = true }
 
 [dev-dependencies]

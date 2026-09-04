@@ -296,6 +296,50 @@ async fn settle_transport_error_is_502() {
     assert_eq!(json["error"], "facilitator transport", "body");
 }
 
+struct OnchainFail;
+
+impl Facilitator for OnchainFail {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("rpc timeout".into())))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::Onchain("rpc timeout".into())))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(SupportedResponse::new()))
+    }
+}
+
+#[tokio::test]
+async fn onchain_verify_is_200_invalid_transaction_state() {
+    let app = router(AppState::new(Arc::new(OnchainFail)));
+    let (status, json) = send(app, json_req("POST", "/verify", v2_body())).await;
+    assert_eq!(status, StatusCode::OK, "Onchain is protocol JSON");
+    assert_eq!(json["isValid"], false, "invalid");
+    assert_eq!(json["invalidReason"], "invalid_transaction_state", "reason");
+}
+
+#[tokio::test]
+async fn onchain_settle_is_200_invalid_transaction_state() {
+    let app = router(AppState::new(Arc::new(OnchainFail)));
+    let (status, json) = send(app, json_req("POST", "/settle", v2_body())).await;
+    assert_eq!(status, StatusCode::OK, "Onchain is protocol JSON");
+    assert_eq!(json["success"], false, "failure");
+    assert_eq!(json["errorReason"], "invalid_transaction_state", "reason");
+    assert_eq!(json["transaction"], "", "no hash");
+    assert_eq!(json["network"], "eip155:84532", "request network");
+}
+
 #[tokio::test]
 async fn bearer_missing_on_supported_is_401() {
     let app = router(AppState::new(Arc::new(FacilitatorMap::new())).with_bearer("secret"));

@@ -15,7 +15,7 @@
 
 Built on [r402](https://github.com/qntx/r402) **0.19.1**. This is facilitator 2.0: there is no compatibility with 1.0.0 config, r402 0.17, `/health`, Watchtower, or `fctl`. Replace `config.toml`; do not convert.
 
-This process parses the 2.0 config schema and serves spec §7 HTTP plus `/healthz`, `/readyz`, and an optional metrics listen. Scheme constructors (EVM/SVM) and deploy artifacts land in later commits. The in-process map may still be empty, so `/readyz` is 503 until constructors land.
+This process parses the 2.0 config schema, constructs in-process EVM `exact` facilitators (`Eip155ChainProvider` + `Eip155ExactFacilitator` with a shared `SettlementCache`), and serves spec §7 HTTP plus `/healthz`, `/readyz`, and an optional metrics listen. A listed scheme without a constructor, or an empty constructed map, is a startup error. SVM constructors and deploy artifacts land in later commits.
 
 `crates/facilitator` path-depends on a **sibling** r402 checkout (`../../../r402/crates/...` from that crate). Clone both repos next to each other; CI clones `qntx/r402` at tag `v0.19.1` into the same layout.
 
@@ -57,14 +57,14 @@ facilitator <COMMAND>
 
 Commands:
   init       Write config.example.toml-equivalent to PATH
-  validate   Load config, resolve secrets, print network/scheme list
+  validate   Load config, construct facilitators, print /supported JSON
   serve      Bind and run
 
 Options:
   -c, --config <PATH>   default: config.toml; env: FACILITATOR_CONFIG
 ```
 
-`init --force` overwrites. `validate` does not construct scheme facilitators: unknown scheme **names** fail; unimplemented constructors do not.
+`init --force` overwrites. `validate` and `serve` construct listed schemes. Unknown scheme **names** fail at parse; a listed scheme this build cannot construct fails at startup.
 
 ## Configuration
 
@@ -78,7 +78,7 @@ Env overlay: `FACILITATOR_HTTP_LISTEN`, `FACILITATOR_HTTP_METRICS_LISTEN`, `FACI
 
 | Feature | Default | Description |
 | --- | --- | --- |
-| `evm` | ✓ | Parse EIP-155 network tables (constructors later) |
+| `evm` | ✓ | Parse EIP-155 tables and construct `exact` |
 | `svm` | ✓ | Parse Solana network tables (constructors later) |
 | `telemetry` | ✓ | Reserved for OTLP |
 | `metrics` | ✓ | Enables `r402-facilitator/metrics` |

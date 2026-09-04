@@ -12,6 +12,9 @@ repository = "https://github.com/qntx/facilitator"
 description = "x402 Facilitator"
 
 [workspace.dependencies]
+alloy-network = "2.1"
+alloy-primitives = { version = "1.6", features = ["k256", "serde"] }
+alloy-signer-local = "2.1"
 axum = "0.8.8"
 clap = { version = "4.6.0", features = ["derive", "env"] }
 compact_str = { version = "0.10", features = ["serde"] }

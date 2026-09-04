@@ -14,7 +14,7 @@ use std::str::FromStr;
 use family::{FamilyStatus, classify};
 pub use http::{HttpAuth, HttpConfig, LogConfig, LogFormat};
 use literal::{reject_literals_and_obsolete, reject_obsolete_root};
-use network::resolve_rpc;
+pub(crate) use network::resolve_rpc;
 pub use network::{EvmNetwork, Network, RpcConfig, RpcEndpoint, SvmNetwork};
 use r402_protocol::ChainId;
 pub use scheme::{

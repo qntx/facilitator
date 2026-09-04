@@ -10,7 +10,6 @@ use clap::{Parser, Subcommand};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
-use crate::compose::FacilitatorMap;
 use crate::config::Config;
 use crate::error::Error;
 use crate::http::{AppState, HttpTimeouts, router_from_config};
@@ -49,7 +48,7 @@ pub(crate) enum Commands {
         #[arg(long, default_value_t = false)]
         force: bool,
     },
-    /// Parse config, resolve secrets, print networks/schemes.
+    /// Parse config, construct facilitators, print `/supported` JSON.
     Validate,
     /// Bind HTTP and serve protocol + ops routes.
     Serve,
@@ -74,12 +73,18 @@ pub(crate) fn run_init(output: &std::path::Path, force: bool) -> Result<(), Erro
 }
 
 /// Run `validate`.
-pub(crate) fn run_validate(config: &Config) -> Result<(), Error> {
+pub(crate) async fn run_validate(config: &Config) -> Result<(), Error> {
     crate::telemetry::init(&config.log);
-    config.resolve_secrets(&|key| std::env::var(key).ok())?;
-    config
-        .write_summary(std::io::stdout())
-        .map_err(|err| Error::config_with("failed to write summary", err))?;
+    let lookup = |key: &str| std::env::var(key).ok();
+    config.resolve_secrets(&lookup)?;
+    let map = crate::compose::build(config, &lookup)?;
+    let supported = r402_facilitator::Facilitator::supported(&map)
+        .await
+        .map_err(|err| Error::config_with("supported aggregation failed", err))?;
+    let mut out = std::io::stdout();
+    serde_json::to_writer_pretty(&mut out, &supported)
+        .map_err(|err| Error::config_with("failed to write /supported JSON", err))?;
+    writeln!(out).map_err(|err| Error::config_with("failed to write /supported JSON", err))?;
     Ok(())
 }
 
@@ -143,9 +148,8 @@ async fn bind_metrics(
 }
 
 fn app_state(config: &Config, lookup: &impl Fn(&str) -> Option<String>) -> Result<AppState, Error> {
-    let map = FacilitatorMap::new();
-    let ready = !map.is_empty();
-    let mut state = AppState::new(Arc::new(map)).with_ready(ready);
+    let map = crate::compose::build(config, lookup)?;
+    let mut state = AppState::new(Arc::new(map)).with_ready(true);
     if let Some(token) = config.resolve_http_auth(lookup)? {
         state = state.with_bearer(token);
     }
