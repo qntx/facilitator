@@ -1,0 +1,80 @@
+# config.example.full.toml — documentation for families this binary does not
+# yet construct. `facilitator init` writes config.example.toml, not this file.
+#
+# Secrets: env or file. Literals for private keys are a startup error.
+
+[http]
+listen = "127.0.0.1:8080"
+verify_timeout = "30s"
+settle_timeout = "30s"
+body_limit_bytes = 262144
+metrics_listen = "127.0.0.1:9090"
+
+[log]
+level = "info"
+format = "json"
+
+[signer.evm_hot]
+source = "env"
+env = "FACILITATOR_EVM_KEY"
+
+[scheme.evm]
+clock_skew_secs = 6
+eip6492_allowed_factories = []
+erc20_approval_gas_sponsoring = false
+
+[network."eip155:84532"]
+rpc = ["https://sepolia.base.org"]
+signers = ["evm_hot"]
+schemes = ["exact"]
+eip1559 = true
+flashblocks = false
+receipt_timeout_secs = 20
+
+[network."eip155:8453"]
+rpc = ["https://mainnet.base.org"]
+signers = ["evm_hot"]
+schemes = ["exact"]
+receipt_timeout_secs = 20
+
+# --- SVM (constructed in a later PR; parsed as documentation) ---
+[signer.svm_fee]
+source = "file"
+path = "/run/secrets/solana.key"
+encoding = "base58"
+
+[scheme.svm.exact]
+# omitted keys = SolanaExactFacilitatorConfig::default()
+# allow_additional_instructions = true
+# max_instruction_count = 7          # clamped 3..=7
+# allowed_program_ids = []           # default Phantom+Solflare Lighthouse + memo
+# blocked_program_ids = []
+enable_smart_wallet_verification = false
+# smart_wallet_max_compute_units = 400000
+# smart_wallet_max_priority_fee_micro_lamports = 50000
+# smart_wallet_allowed_programs = []
+# CU limits are on the *network* table (SolanaChainProvider::new), not here.
+
+[scheme.svm.upto]
+# omitted keys = SolanaUptoFacilitatorConfig::default()
+max_channel_lifetime_secs = 3600
+# max_priority_fee_micro_lamports
+# max_compute_units
+# max_required_signatures
+# compute_unit_price_micro_lamports
+# settle_compute_unit_limit
+
+[network."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+rpc = "https://api.devnet.solana.com"
+# rpc_env = "SOLANA_RPC_URL"         # mutually exclusive with `rpc`
+# pubsub = "wss://api.devnet.solana.com"
+fee_payer = "svm_fee"
+schemes = ["exact"]
+max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
+# max_compute_unit_price omitted → SDK SOLANA_MAX_COMPUTE_UNIT_PRICE_MICROLAMPORTS (5_000_000)
+
+# --- later PRs; listing them before constructors exist is a startup error ---
+# schemes = ["exact", "upto", "auth-capture", "batch-settlement"]
+# [network."near:testnet"]
+# relayers = [{ account_id = "relayer.testnet", signer = "near_relayer" }]
+# schemes = ["exact"]
