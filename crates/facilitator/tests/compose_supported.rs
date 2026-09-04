@@ -1,4 +1,4 @@
-//! Compose: EVM exact/upto and SVM exact construction, `/supported` pass-through.
+//! Compose: EVM exact/upto and SVM exact/upto construction, `/supported` pass-through.
 
 #![allow(
     unused_crate_dependencies,
@@ -302,18 +302,57 @@ async fn evm_and_svm_concat_kinds_and_union_signer_keys() {
 
 #[cfg(feature = "svm")]
 #[tokio::test]
-async fn listed_svm_upto_without_constructor_is_startup_error() {
-    let raw = svm_doc("", "").replace("schemes = [\"exact\"]", "schemes = [\"exact\", \"upto\"]");
-    let cfg = parse_config_toml(&raw).expect("upto is a known SVM name");
-    let err = build(&cfg, &lookup)
-        .await
-        .expect_err("svm upto has no constructor in this PR");
-    assert!(
-        err.to_string().contains(
-            "scheme 'upto' on solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1 is not enabled in this build"
-        ),
-        "got {err}"
+async fn svm_upto_supported_passes_through_feepayer_and_signers() {
+    let cfg = parse_config_toml(&svm_doc_with_schemes("", "", r#"["upto"]"#)).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "one kind");
+    assert_svm_upto_kind_at(&supported, 0, SVM_DEVNET, SVM_ADDR);
+    let signers = supported
+        .signers
+        .get("solana:*")
+        .expect("solana:* signer key");
+    assert_eq!(
+        signers.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),
+        [SVM_ADDR],
+        "fee payer"
     );
+    assert!(supported.extensions.is_empty(), "no extra extensions");
+}
+
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn svm_exact_and_upto_concat_kinds_and_keep_extra() {
+    let cfg =
+        parse_config_toml(&svm_doc_with_schemes("", "", r#"["exact", "upto"]"#)).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 2, "exact then upto");
+    assert_svm_exact_kind_at(&supported, 0, SVM_DEVNET, SVM_ADDR);
+    assert_svm_upto_kind_at(&supported, 1, SVM_DEVNET, SVM_ADDR);
+    let signers = supported
+        .signers
+        .get("solana:*")
+        .expect("union under solana:*");
+    assert_eq!(
+        signers.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),
+        [SVM_ADDR],
+        "deduped fee payer"
+    );
+}
+
+#[cfg(feature = "svm")]
+#[tokio::test]
+async fn svm_upto_scheme_table_and_network_overlay_construct() {
+    let cfg = parse_config_toml(&svm_doc_with_schemes(
+        "[scheme.svm.upto]\nmax_channel_lifetime_secs = 3600\n",
+        "[network.\"solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1\".upto]\nmax_compute_units = 300000\n",
+        r#"["upto"]"#,
+    ))
+    .expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_svm_upto_kind_at(&supported, 0, SVM_DEVNET, SVM_ADDR);
 }
 
 #[cfg(feature = "svm")]
@@ -421,6 +460,11 @@ fn example_toml_lists_exact_and_upto() {
 
 #[cfg(feature = "svm")]
 fn svm_doc(scheme_svm: &str, extra: &str) -> String {
+    svm_doc_with_schemes(scheme_svm, extra, r#"["exact"]"#)
+}
+
+#[cfg(feature = "svm")]
+fn svm_doc_with_schemes(scheme_svm: &str, extra: &str, schemes: &str) -> String {
     format!(
         r#"
 [http]
@@ -436,7 +480,7 @@ env = "FACILITATOR_SVM_KEY"
 [network."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
 rpc = "http://127.0.0.1:1"
 fee_payer = "svm_fee"
-schemes = ["exact"]
+schemes = {schemes}
 {extra}
 "#
     )
@@ -477,14 +521,35 @@ fn assert_svm_exact_kind_at(
     network: &str,
     fee_payer: &str,
 ) {
+    assert_svm_kind_at(supported, index, "exact", network, fee_payer);
+}
+
+#[cfg(feature = "svm")]
+fn assert_svm_upto_kind_at(
+    supported: &SupportedResponse,
+    index: usize,
+    network: &str,
+    fee_payer: &str,
+) {
+    assert_svm_kind_at(supported, index, "upto", network, fee_payer);
+}
+
+#[cfg(feature = "svm")]
+fn assert_svm_kind_at(
+    supported: &SupportedResponse,
+    index: usize,
+    scheme: &str,
+    network: &str,
+    fee_payer: &str,
+) {
     let kind = &supported.kinds[index];
     assert_eq!(kind.x402_version, 2, "V2");
-    assert_eq!(kind.scheme.as_str(), "exact", "scheme");
+    assert_eq!(kind.scheme.as_str(), scheme, "scheme");
     assert_eq!(kind.network.as_str(), network, "network");
     let extra = kind
         .extra
         .as_ref()
-        .expect("svm exact extra.feePayer must not be stripped");
+        .expect("svm extra.feePayer must not be stripped");
     assert_eq!(extra["feePayer"], fee_payer, "feePayer pass-through");
     assert!(
         extra.get("features").is_none(),

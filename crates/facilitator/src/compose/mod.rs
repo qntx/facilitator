@@ -112,11 +112,12 @@ impl Facilitator for FacilitatorMap {
 ///
 /// EVM exact/upto and SVM exact use `with_settlement_cache` as a constructor
 /// (never `try_new`) so they share the process
-/// [`r402_facilitator::SettlementCache`]. Auth-capture uses `try_new(provider)`
-/// only. Batch-settlement uses `with_store` with a process-wide in-memory
-/// channel store. Path 2 smart-wallet verification is a startup error.
-/// A listed scheme without a constructor in this build is an error. The
-/// returned map is nonempty.
+/// [`r402_facilitator::SettlementCache`]. SVM upto uses `new` + `with_storage`
+/// + `with_pending_store` (no settlement-cache constructor; r402 0.19.1 has no
+/// rent-cleanup manager). Auth-capture uses `try_new(provider)` only.
+/// Batch-settlement uses `with_store` with a process-wide in-memory channel
+/// store. Path 2 is a startup error. A listed scheme without a constructor in
+/// this build is an error. The returned map is nonempty.
 ///
 /// # Errors
 ///
@@ -135,7 +136,7 @@ pub async fn build(
     let evm = evm::Prepare::new(config, cache.clone(), Arc::clone(&pending))?;
     #[cfg(feature = "svm")]
     let svm = svm::Prepare::new(
-        config.scheme.svm.exact.clone(),
+        config.scheme.svm.clone(),
         cache.clone(),
         Arc::clone(&pending),
     );

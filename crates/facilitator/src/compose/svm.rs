@@ -1,4 +1,10 @@
-//! Solana provider + exact facilitator wiring.
+//! Solana provider + exact/upto facilitator wiring.
+//!
+//! Exact and upto share one [`SolanaChainProvider`] per network (CU limits
+//! live on the network table). Upto uses process-wide
+//! [`InMemoryChannelStorage`]; r402 0.19.1 does not expose a rent-cleanup
+//! manager, so the channel index is lost on restart and Distributed-channel
+//! rent is not reclaimed. v1 is a single replica.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -6,32 +12,39 @@ use std::sync::Arc;
 use compact_str::CompactString;
 use r402_facilitator::{DynFacilitator, PendingSettlementStore, SettlementCache};
 use r402_protocol::scheme::SchemeSlug;
-use r402_protocol::{ChainId, ExactScheme};
+use r402_protocol::{ChainId, ExactScheme, UptoScheme};
 use r402_svm::chain::{Address, SolanaChainProvider, SolanaChainReference};
 use r402_svm::exact::facilitator::{SolanaExactFacilitator, SolanaExactFacilitatorConfig};
+use r402_svm::upto::facilitator::{
+    InMemoryChannelStorage, SolanaUptoFacilitator, SolanaUptoFacilitatorConfig, UptoChannelStorage,
+};
 use solana_keypair::Keypair;
 
 use super::{FacilitatorMap, scheme_not_enabled};
-use crate::config::{RpcEndpoint, SvmExactConfig, SvmNetwork};
+use crate::config::{RpcEndpoint, SvmExactConfig, SvmNetwork, SvmSchemeConfig, SvmUptoConfig};
 use crate::error::Error;
 
-/// Process-wide SVM exact construction state.
+/// Process-wide SVM exact/upto construction state.
 pub(super) struct Prepare {
     cache: SettlementCache,
     pending: Arc<dyn PendingSettlementStore>,
+    storage: Arc<dyn UptoChannelStorage>,
     exact: SvmExactConfig,
+    upto: SvmUptoConfig,
 }
 
 impl Prepare {
     pub(super) fn new(
-        exact: SvmExactConfig,
+        scheme: SvmSchemeConfig,
         cache: SettlementCache,
         pending: Arc<dyn PendingSettlementStore>,
     ) -> Self {
         Self {
             cache,
             pending,
-            exact,
+            storage: Arc::new(InMemoryChannelStorage::new()),
+            exact: scheme.exact,
+            upto: scheme.upto,
         }
     }
 
@@ -47,6 +60,7 @@ impl Prepare {
         for name in &network.schemes {
             match name.as_str() {
                 ExactScheme::VALUE => self.register_exact(map, &provider, network)?,
+                UptoScheme::VALUE => self.register_upto(map, &provider, network)?,
                 _ => return Err(scheme_not_enabled(name, &network.chain_id)),
             }
         }
@@ -67,6 +81,22 @@ impl Prepare {
         )
         .with_pending_store(Arc::clone(&self.pending));
         insert_scheme(map, network, ExactScheme::VALUE, Arc::new(facilitator))
+    }
+
+    fn register_upto(
+        &self,
+        map: &mut FacilitatorMap,
+        provider: &Arc<SolanaChainProvider>,
+        network: &SvmNetwork,
+    ) -> Result<(), Error> {
+        // No settlement-cache constructor. `new` allocates private storage and
+        // pending; override both so every SVM upto handler shares the process
+        // stores. r402 0.19.1 has no rent-cleanup manager to spawn.
+        let config = upto_config(&self.upto, network.upto.as_ref());
+        let facilitator = SolanaUptoFacilitator::new(Arc::clone(provider), config)
+            .with_storage(Arc::clone(&self.storage))
+            .with_pending_store(Arc::clone(&self.pending));
+        insert_scheme(map, network, UptoScheme::VALUE, Arc::new(facilitator))
     }
 }
 
@@ -211,4 +241,119 @@ fn parse_program_ids(raw: &[String]) -> Result<Vec<Address>, Error> {
                 .map_err(|err| Error::config(format!("invalid Solana program id '{value}': {err}")))
         })
         .collect()
+}
+
+fn upto_config(
+    global: &SvmUptoConfig,
+    overlay: Option<&SvmUptoConfig>,
+) -> SolanaUptoFacilitatorConfig {
+    apply_upto(&overlay_upto(global, overlay))
+}
+
+fn overlay_upto(base: &SvmUptoConfig, overlay: Option<&SvmUptoConfig>) -> SvmUptoConfig {
+    let Some(over) = overlay else {
+        return *base;
+    };
+    SvmUptoConfig {
+        max_channel_lifetime_secs: over
+            .max_channel_lifetime_secs
+            .or(base.max_channel_lifetime_secs),
+        max_priority_fee_micro_lamports: over
+            .max_priority_fee_micro_lamports
+            .or(base.max_priority_fee_micro_lamports),
+        max_compute_units: over.max_compute_units.or(base.max_compute_units),
+        max_required_signatures: over
+            .max_required_signatures
+            .or(base.max_required_signatures),
+        compute_unit_price_micro_lamports: over
+            .compute_unit_price_micro_lamports
+            .or(base.compute_unit_price_micro_lamports),
+        settle_compute_unit_limit: over
+            .settle_compute_unit_limit
+            .or(base.settle_compute_unit_limit),
+    }
+}
+
+fn apply_upto(merged: &SvmUptoConfig) -> SolanaUptoFacilitatorConfig {
+    let mut config = SolanaUptoFacilitatorConfig::default();
+    if let Some(value) = merged.max_channel_lifetime_secs {
+        config.max_channel_lifetime_secs = value;
+    }
+    if let Some(value) = merged.max_priority_fee_micro_lamports {
+        config.max_priority_fee_micro_lamports = value;
+    }
+    if let Some(value) = merged.max_compute_units {
+        config.max_compute_units = value;
+    }
+    if let Some(value) = merged.max_required_signatures {
+        config.max_required_signatures = Some(value);
+    }
+    if let Some(value) = merged.compute_unit_price_micro_lamports {
+        config.compute_unit_price_micro_lamports = value;
+    }
+    if let Some(value) = merged.settle_compute_unit_limit {
+        config.settle_compute_unit_limit = value;
+    }
+    config
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "unit tests"
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_upto_prefers_network_keys_and_keeps_global() {
+        let base = SvmUptoConfig {
+            max_channel_lifetime_secs: Some(3_600),
+            ..SvmUptoConfig::default()
+        };
+        let over = SvmUptoConfig {
+            max_compute_units: Some(300_000),
+            ..SvmUptoConfig::default()
+        };
+        let merged = overlay_upto(&base, Some(&over));
+        assert_eq!(
+            merged.max_channel_lifetime_secs,
+            Some(3_600),
+            "global lifetime"
+        );
+        assert_eq!(
+            merged.max_compute_units,
+            Some(300_000),
+            "network CU overlay"
+        );
+    }
+
+    #[test]
+    fn apply_upto_omitted_keeps_sdk_defaults() {
+        let config = apply_upto(&SvmUptoConfig::default());
+        let default = SolanaUptoFacilitatorConfig::default();
+        assert_eq!(
+            config.max_channel_lifetime_secs, default.max_channel_lifetime_secs,
+            "lifetime"
+        );
+        assert_eq!(
+            config.max_priority_fee_micro_lamports, default.max_priority_fee_micro_lamports,
+            "priority fee"
+        );
+        assert_eq!(config.max_compute_units, default.max_compute_units, "CU");
+        assert_eq!(
+            config.max_required_signatures, default.max_required_signatures,
+            "signatures"
+        );
+        assert_eq!(
+            config.compute_unit_price_micro_lamports, default.compute_unit_price_micro_lamports,
+            "settle price"
+        );
+        assert_eq!(
+            config.settle_compute_unit_limit, default.settle_compute_unit_limit,
+            "settle CU"
+        );
+    }
 }
