@@ -134,7 +134,7 @@ sudo systemctl enable --now facilitator
 docker build -t ghcr.io/qntx/facilitator:2.0.0 .
 ```
 
-The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to override) so the crate path deps resolve. CI publishes `ghcr.io/qntx/facilitator` on `v*` tags with buildx SBOM and provenance attestation. Pull requests and `workflow_dispatch` only prove the image builds (no push, no SBOM). Org metadata-action also moves `:latest` and `:2`; pin `:2.0.0` or a digest.
+The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to override) so the crate path deps resolve. CI publishes `ghcr.io/qntx/facilitator` on `v*` tags with buildx SBOM and provenance attestation. Pull requests and `workflow_dispatch` only prove the image builds (no push, no SBOM). metadata-action also moves `:latest` and `:2`; pin `:2.0.0` or a digest.
 
 ## Feature Flags
 
