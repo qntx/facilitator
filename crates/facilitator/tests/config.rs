@@ -1,4 +1,4 @@
-//! Config schema tests for facilitator 2.0.
+//! Config schema tests.
 
 #![allow(
     unused_crate_dependencies,

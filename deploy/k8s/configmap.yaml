@@ -4,7 +4,7 @@ metadata:
   name: facilitator
   labels:
     app.kubernetes.io/name: facilitator
-    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/version: "0.7.0"
 data:
   config.toml: |
     # In-cluster bind. Signers are Secret files (source = "file"), not env.

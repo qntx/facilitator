@@ -2,7 +2,7 @@
 //!
 //! Exact and upto share one [`SolanaChainProvider`] per network (CU limits
 //! live on the network table). Upto uses process-wide
-//! [`InMemoryChannelStorage`]; r402 0.19.1 does not expose a rent-cleanup
+//! [`InMemoryChannelStorage`]; r402 0.20 does not expose a rent-cleanup
 //! manager, so the channel index is lost on restart and Distributed-channel
 //! rent is not reclaimed. v1 is a single replica.
 
@@ -91,7 +91,7 @@ impl Prepare {
     ) -> Result<(), Error> {
         // No settlement-cache constructor. `new` allocates private storage and
         // pending; override both so every SVM upto handler shares the process
-        // stores. r402 0.19.1 has no rent-cleanup manager to spawn.
+        // stores. r402 0.20 has no rent-cleanup manager to spawn.
         let config = upto_config(&self.upto, network.upto.as_ref());
         let facilitator = SolanaUptoFacilitator::new(Arc::clone(provider), config)
             .with_storage(Arc::clone(&self.storage))

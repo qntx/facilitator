@@ -149,7 +149,7 @@ impl Facilitator for FacilitatorMap {
 /// Stellar, Concordium, and Tron exact share that cache too. NEAR and XRPL
 /// use private cache types (one per process). SVM upto uses `new`,
 /// `with_storage`, and `with_pending_store` (no settlement-cache constructor;
-/// r402 0.19.1 has no rent-cleanup manager). Auth-capture uses
+/// r402 0.20 has no rent-cleanup manager). Auth-capture uses
 /// `try_new(provider)` only. Batch-settlement uses `with_store` with a
 /// process-wide in-memory channel store. Path 2 is a startup error. A listed
 /// scheme without a constructor in this build is an error. The returned map

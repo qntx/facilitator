@@ -1,4 +1,4 @@
-# config.example.toml — x402 facilitator 2.0 (r402 0.19)
+# config.example.toml — x402 facilitator 0.7 (r402 0.20)
 # Secrets: env or file. Literals for private keys are a startup error.
 
 [http]
