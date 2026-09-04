@@ -106,7 +106,8 @@ impl Facilitator for FacilitatorMap {
 ///
 /// EVM exact and upto use `with_settlement_cache` as a constructor (never
 /// `try_new`) so they share the process [`r402_facilitator::SettlementCache`].
-/// EVM auth-capture uses `try_new(provider)` only (no cache, no pending store).
+/// Auth-capture uses `try_new(provider)` only. Batch-settlement uses
+/// `with_store` with a process-wide in-memory channel store.
 /// A listed scheme without a constructor in this build is an error. The
 /// returned map is nonempty.
 ///

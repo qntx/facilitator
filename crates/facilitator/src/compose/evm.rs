@@ -1,4 +1,4 @@
-//! EIP-155 provider + exact/upto/auth-capture facilitator wiring.
+//! EIP-155 provider + exact/upto/auth-capture/batch-settlement wiring.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -7,8 +7,12 @@ use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
 use alloy_signer_local::PrivateKeySigner;
 use compact_str::CompactString;
+use r402_evm::batch_settlement::{ChannelStore, MemoryChannelStore};
 use r402_evm::chain::{Eip155ChainProvider, Eip155ChainReference};
-use r402_evm::{Eip155AuthCaptureFacilitator, Eip155ExactFacilitator, Eip155UptoFacilitator};
+use r402_evm::{
+    Eip155AuthCaptureFacilitator, Eip155BatchSettlementFacilitator, Eip155ExactFacilitator,
+    Eip155UptoFacilitator,
+};
 use r402_extensions::{
     BUILDER_CODE, BuilderCodeFacilitatorConfig, BuilderCodeFacilitatorExtension,
     ERC20_APPROVAL_GAS_SPONSORING_KEY,
@@ -16,7 +20,9 @@ use r402_extensions::{
 use r402_facilitator::{
     DynFacilitator, InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache,
 };
-use r402_protocol::{AuthCaptureScheme, ExactScheme, UptoScheme, scheme::SchemeSlug};
+use r402_protocol::{
+    AuthCaptureScheme, BatchSettlementScheme, ExactScheme, UptoScheme, scheme::SchemeSlug,
+};
 use url::Url;
 
 use super::{FacilitatorMap, scheme_not_enabled};
@@ -25,10 +31,11 @@ use crate::config::{
 };
 use crate::error::Error;
 
-/// Process-wide EVM exact/upto/auth-capture construction state.
+/// Process-wide EVM scheme construction state.
 pub(super) struct Prepare {
     cache: SettlementCache,
     pending: Arc<dyn PendingSettlementStore>,
+    channel_store: Arc<dyn ChannelStore>,
     settings: Settings,
 }
 
@@ -41,9 +48,13 @@ struct Settings {
 
 impl Prepare {
     pub(super) fn new(config: &Config) -> Result<Self, Error> {
+        if lists_batch_settlement(config) {
+            tracing::info!("batch-settlement requires a single replica");
+        }
         Ok(Self {
             cache: SettlementCache::new(),
             pending: Arc::new(InMemoryPendingSettlementStore::new()),
+            channel_store: Arc::new(MemoryChannelStore::new()),
             settings: Settings::from_config(&config.scheme.evm)?,
         })
     }
@@ -66,6 +77,7 @@ impl Prepare {
                 ExactScheme::VALUE => self.register_exact(map, &provider, network)?,
                 UptoScheme::VALUE => self.register_upto(map, &provider, network)?,
                 AuthCaptureScheme::VALUE => register_auth_capture(map, &provider, network)?,
+                BatchSettlementScheme::VALUE => self.register_batch(map, &provider, network)?,
                 _ => return Err(scheme_not_enabled(name, &network.chain_id)),
             }
         }
@@ -120,6 +132,36 @@ impl Prepare {
         }
         insert_scheme(map, network, UptoScheme::VALUE, Arc::new(facilitator))
     }
+
+    fn register_batch(
+        &self,
+        map: &mut FacilitatorMap,
+        provider: &Arc<Eip155ChainProvider>,
+        network: &EvmNetwork,
+    ) -> Result<(), Error> {
+        // `try_new` allocates a private MemoryChannelStore; share the process store.
+        let facilitator = Eip155BatchSettlementFacilitator::with_store(
+            Arc::clone(provider),
+            Arc::clone(&self.channel_store),
+        )
+        .with_pending_store(Arc::clone(&self.pending))
+        .with_eip6492_allowed_factories(self.settings.factories.clone());
+        insert_scheme(
+            map,
+            network,
+            BatchSettlementScheme::VALUE,
+            Arc::new(facilitator),
+        )
+    }
+}
+
+fn lists_batch_settlement(config: &Config) -> bool {
+    config.networks.iter().any(|network| {
+        network
+            .schemes()
+            .iter()
+            .any(|name| name.as_str() == BatchSettlementScheme::VALUE)
+    })
 }
 
 fn register_auth_capture(

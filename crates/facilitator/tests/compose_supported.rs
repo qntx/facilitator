@@ -183,6 +183,26 @@ async fn auth_capture_only_supported_passes_through_sdk_kind() {
 
 #[cfg(feature = "evm")]
 #[tokio::test]
+async fn batch_settlement_supported_passes_through_sdk_kinds() {
+    let cfg =
+        parse_config_toml(&evm_doc_with_schemes("", "", r#"["batch-settlement"]"#)).expect("parse");
+    let map = build(&cfg, &lookup).expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "batch-settlement only");
+    assert_batch_settlement_kind_at(&supported, 0, "eip155:84532");
+    let signers = supported
+        .signers
+        .get("eip155:*")
+        .expect("eip155:* signer key");
+    assert_eq!(
+        signers.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),
+        [ANVIL_ADDR],
+        "checksummed signer"
+    );
+}
+
+#[cfg(feature = "evm")]
+#[tokio::test]
 async fn exact_upto_and_auth_capture_concat_kinds() {
     let cfg = parse_config_toml(&evm_doc_with_schemes(
         "",
@@ -212,17 +232,27 @@ async fn exact_upto_and_auth_capture_concat_kinds() {
 }
 
 #[cfg(feature = "evm")]
-#[test]
-fn listed_batch_settlement_without_constructor_is_startup_error() {
-    let raw = evm_doc_with_schemes("", "", r#"["exact", "batch-settlement"]"#);
-    let cfg = parse_config_toml(&raw).expect("batch-settlement is a known EVM name");
-    let err = build(&cfg, &lookup).expect_err("batch-settlement has no constructor in this PR");
-    assert!(
-        err.to_string()
-            .contains("scheme 'batch-settlement' on eip155:84532 is not enabled in this build"),
-        "got {err}"
+#[tokio::test]
+async fn exact_upto_and_batch_settlement_concat_kinds() {
+    let cfg = parse_config_toml(&evm_doc_with_schemes(
+        "",
+        "",
+        r#"["exact", "upto", "batch-settlement"]"#,
+    ))
+    .expect("parse");
+    let map = build(&cfg, &lookup).expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(
+        supported.kinds.len(),
+        3,
+        "exact then upto then batch-settlement"
     );
+    assert_exact_kind_at(&supported, 0, "eip155:84532");
+    assert_upto_kind_at(&supported, 1, "eip155:84532");
+    assert_batch_settlement_kind_at(&supported, 2, "eip155:84532");
 }
+
+
 
 #[cfg(feature = "svm")]
 #[test]
@@ -322,4 +352,12 @@ fn assert_auth_capture_kind_at(supported: &SupportedResponse, index: usize, netw
     assert_eq!(kind.scheme.as_str(), "auth-capture", "scheme");
     assert_eq!(kind.network.as_str(), network, "network");
     assert_eq!(kind.extra, None, "auth-capture extra is absent");
+}
+
+fn assert_batch_settlement_kind_at(supported: &SupportedResponse, index: usize, network: &str) {
+    let kind = &supported.kinds[index];
+    assert_eq!(kind.x402_version, 2, "V2");
+    assert_eq!(kind.scheme.as_str(), "batch-settlement", "scheme");
+    assert_eq!(kind.network.as_str(), network, "network");
+    assert_eq!(kind.extra, None, "batch-settlement extra is absent");
 }
