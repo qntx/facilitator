@@ -89,9 +89,12 @@ fn full_example_parses_as_documentation() {
         .iter()
         .any(|net| net.chain_id().namespace() == "solana");
     assert!(has_solana, "full example includes SVM exact+upto");
-    let svm = cfg.networks.iter().find_map(|net| match net {
-        Network::Svm(svm) => Some(svm),
-        Network::Evm(_) => None,
+    let svm = cfg.networks.iter().find_map(|net| {
+        if let Network::Svm(svm) = net {
+            Some(svm)
+        } else {
+            None
+        }
     });
     let svm = svm.expect("solana network");
     assert_eq!(
@@ -106,9 +109,12 @@ fn full_example_parses_as_documentation() {
     );
     assert_eq!(svm.max_compute_unit_limit, 200_000, "network CU limit");
     assert_eq!(svm.max_compute_unit_price, None, "SDK default CU price");
-    let evm_schemes = cfg.networks.iter().filter_map(|net| match net {
-        Network::Evm(evm) => Some(evm.schemes.as_slice()),
-        Network::Svm(_) => None,
+    let evm_schemes = cfg.networks.iter().filter_map(|net| {
+        if let Network::Evm(evm) = net {
+            Some(evm.schemes.as_slice())
+        } else {
+            None
+        }
     });
     for schemes in evm_schemes {
         assert_eq!(
@@ -247,7 +253,7 @@ schemes = ["exact"]
 
 #[cfg(feature = "near")]
 #[test]
-fn reserved_near_fails() {
+fn near_optional_rpc_omit_ok() {
     let raw = r#"
 [signer.near_relayer]
 source = "env"
@@ -256,8 +262,266 @@ env = "NEAR_KEY"
 relayers = [{ account_id = "relayer.testnet", signer = "near_relayer" }]
 schemes = ["exact"]
 "#;
+    let cfg = parse_config_toml(raw).expect("omit rpc");
+    let near = cfg.networks.iter().find_map(|net| {
+        if let Network::Near(near) = net {
+            Some(near)
+        } else {
+            None
+        }
+    });
+    let near = near.expect("near network");
+    assert!(near.rpc.is_none(), "omit = SDK default");
+    assert_eq!(
+        near.relayer_signer_names,
+        ["near_relayer".to_owned()],
+        "relayer signer"
+    );
+}
+
+#[cfg(feature = "near")]
+#[test]
+fn near_rpc_and_rpc_env_are_exclusive() {
+    let raw = r#"
+[signer.near_relayer]
+source = "env"
+env = "NEAR_KEY"
+[network."near:testnet"]
+rpc = "http://127.0.0.1:1"
+rpc_env = "NEAR_RPC"
+relayers = [{ account_id = "relayer.testnet", signer = "near_relayer" }]
+schemes = ["exact"]
+"#;
     let err = parse_config_toml(raw).unwrap_err();
-    assert!(err.to_string().contains("schema reserved"), "got {err}");
+    assert!(
+        err.to_string()
+            .contains("at most one of `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(not(feature = "xrpl"))]
+#[test]
+fn compiled_out_xrpl_fails() {
+    let raw = r#"
+[network."xrpl:1"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'xrpl'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features xrpl"), "got {err}");
+}
+
+#[cfg(feature = "xrpl")]
+#[test]
+fn xrpl_optional_rpc_omit_ok() {
+    let raw = r#"
+[network."xrpl:1"]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("omit rpc");
+    let xrpl = cfg.networks.iter().find_map(|net| {
+        if let Network::Xrpl(xrpl) = net {
+            Some(xrpl)
+        } else {
+            None
+        }
+    });
+    let xrpl = xrpl.expect("xrpl network");
+    assert!(xrpl.rpc.is_none(), "omit = SDK default");
+    assert!(
+        cfg.networks
+            .iter()
+            .any(|net| net.chain_id().namespace() == "xrpl" && net.signer_names().is_empty()),
+        "no hot wallet"
+    );
+}
+
+#[cfg(feature = "xrpl")]
+#[test]
+fn xrpl_rpc_and_rpc_env_are_exclusive() {
+    let raw = r#"
+[network."xrpl:1"]
+rpc = "http://127.0.0.1:1"
+rpc_env = "XRPL_RPC"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("at most one of `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "xrpl")]
+#[test]
+fn xrpl_rejects_signers() {
+    let raw = r#"
+[signer.xrpl_hot]
+source = "env"
+env = "XRPL_KEY"
+[network."xrpl:1"]
+signers = ["xrpl_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("XRPL has no hot wallet"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("`signers`"), "got {err}");
+}
+
+#[cfg(feature = "xrpl")]
+#[test]
+fn xrpl_rejects_fee_payer() {
+    let raw = r#"
+[signer.xrpl_hot]
+source = "env"
+env = "XRPL_KEY"
+[network."xrpl:1"]
+fee_payer = "xrpl_hot"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("XRPL has no hot wallet"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("`fee_payer`"), "got {err}");
+}
+
+#[cfg(not(feature = "hedera"))]
+#[test]
+fn compiled_out_hedera_fails() {
+    let raw = r#"
+[signer.hedera_fee]
+source = "env"
+env = "HEDERA_KEY"
+[network."hedera:testnet"]
+fee_payers = [{ account_id = "0.0.5001", signer = "hedera_fee" }]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'hedera'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features hedera"), "got {err}");
+}
+
+#[cfg(feature = "hedera")]
+#[test]
+fn hedera_parses_fee_payers() {
+    let raw = r#"
+[signer.hedera_fee]
+source = "env"
+env = "HEDERA_KEY"
+[network."hedera:testnet"]
+fee_payers = [{ account_id = "0.0.5001", signer = "hedera_fee" }]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("hedera");
+    let hedera = cfg.networks.iter().find_map(|net| {
+        if let Network::Hedera(hedera) = net {
+            Some(hedera)
+        } else {
+            None
+        }
+    });
+    let hedera = hedera.expect("hedera network");
+    assert_eq!(
+        hedera.fee_payer_signer_names,
+        ["hedera_fee".to_owned()],
+        "fee payer"
+    );
+    assert_eq!(
+        hedera.alias_policy,
+        facilitator::HederaAliasPolicy::Reject,
+        "default"
+    );
+}
+
+#[cfg(not(feature = "avm"))]
+#[test]
+fn compiled_out_avm_fails() {
+    let raw = r#"
+[signer.algo_hot]
+source = "env"
+env = "ALGORAND_KEY"
+[network."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+signers = ["algo_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'algorand'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features avm"), "got {err}");
+}
+
+#[cfg(feature = "avm")]
+#[test]
+fn avm_optional_algod_omit_ok() {
+    let raw = r#"
+[signer.algo_hot]
+source = "env"
+env = "ALGORAND_KEY"
+[network."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]
+signers = ["algo_hot"]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("omit algod");
+    let avm = cfg.networks.iter().find_map(|net| {
+        if let Network::Avm(avm) = net {
+            Some(avm)
+        } else {
+            None
+        }
+    });
+    let avm = avm.expect("avm network");
+    assert!(avm.algod_url.is_none(), "omit algod_url");
+    assert!(avm.algod_token_env.is_none(), "omit token");
+}
+
+#[test]
+fn compiled_out_aptos_names_feature() {
+    let raw = r#"
+[signer.aptos_hot]
+source = "env"
+env = "APTOS_KEY"
+[network."aptos:1"]
+fee_payers = ["aptos_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'aptos'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features aptos"), "got {err}");
+}
+
+#[test]
+fn casper_is_always_unhostable() {
+    let raw = r#"
+[network."casper:casper"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("casper exact cannot be hosted"), "got {err}");
+    assert!(msg.contains("remote HTTP client"), "got {err}");
+    assert!(
+        !msg.contains("rebuild with --features"),
+        "casper must not suggest a Cargo feature, got {err}"
+    );
+    assert!(!msg.contains("extra-casper"), "got {err}");
 }
 
 #[test]

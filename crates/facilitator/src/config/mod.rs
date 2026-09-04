@@ -11,11 +11,25 @@ use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
 
-use family::{FamilyStatus, classify};
+use family::{CASPER_UNHOSTABLE, FamilyStatus, classify};
 pub use http::{HttpAuth, HttpConfig, LogConfig, LogFormat};
 use literal::{reject_literals_and_obsolete, reject_obsolete_root};
+#[cfg(feature = "avm")]
+pub use network::AvmNetwork;
+#[cfg(any(feature = "near", feature = "hedera"))]
+pub use network::NamedAccount;
+#[cfg(feature = "near")]
+pub use network::NearNetwork;
+#[cfg(feature = "xrpl")]
+pub use network::XrplNetwork;
+#[cfg(feature = "avm")]
+pub(crate) use network::resolve_algod_token;
+#[cfg(any(feature = "near", feature = "xrpl"))]
+pub(crate) use network::resolve_optional_rpc;
 pub(crate) use network::resolve_rpc;
 pub use network::{EvmNetwork, Network, RpcConfig, RpcEndpoint, SvmNetwork};
+#[cfg(feature = "hedera")]
+pub use network::{HederaAliasPolicy, HederaNetwork};
 use r402_protocol::ChainId;
 pub use scheme::{
     BuilderCodeToml, EvmSchemeConfig, SchemeTables, SvmExactConfig, SvmSchemeConfig, SvmUptoConfig,
@@ -147,6 +161,9 @@ fn parse_networks(raw: toml::Table) -> Result<Vec<Network>, Error> {
                     chain_id.namespace()
                 )));
             }
+            FamilyStatus::CasperUnhostable => {
+                return Err(Error::config(CASPER_UNHOSTABLE));
+            }
             FamilyStatus::Unknown => {
                 return Err(Error::config(format!(
                     "unknown CAIP-2 namespace '{}' in [network.\"{key}\"]",
@@ -203,7 +220,7 @@ impl Config {
             })?;
         }
         for network in &self.networks {
-            let _ = resolve_rpc(network.chain_id(), rpc_of(network), lookup)?;
+            resolve_network_env(network, lookup)?;
         }
         let _ = self.resolve_http_auth(lookup)?;
         Ok(())
@@ -313,9 +330,31 @@ impl Config {
     }
 }
 
-const fn rpc_of(network: &Network) -> &RpcConfig {
+fn resolve_network_env(
+    network: &Network,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<(), Error> {
     match network {
-        Network::Evm(net) => &net.rpc,
-        Network::Svm(net) => &net.rpc,
+        Network::Evm(net) => {
+            let _ = resolve_rpc(&net.chain_id, &net.rpc, lookup)?;
+        }
+        Network::Svm(net) => {
+            let _ = resolve_rpc(&net.chain_id, &net.rpc, lookup)?;
+        }
+        #[cfg(feature = "near")]
+        Network::Near(net) => {
+            let _ = resolve_optional_rpc(&net.chain_id, net.rpc.as_ref(), lookup)?;
+        }
+        #[cfg(feature = "xrpl")]
+        Network::Xrpl(net) => {
+            let _ = resolve_optional_rpc(&net.chain_id, net.rpc.as_ref(), lookup)?;
+        }
+        #[cfg(feature = "hedera")]
+        Network::Hedera(_) => {}
+        #[cfg(feature = "avm")]
+        Network::Avm(net) => {
+            let _ = resolve_algod_token(&net.chain_id, net.algod_token_env.as_deref(), lookup)?;
+        }
     }
+    Ok(())
 }

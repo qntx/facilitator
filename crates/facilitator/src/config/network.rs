@@ -14,6 +14,11 @@ const DEFAULT_RECEIPT_TIMEOUT_SECS: u64 = 20;
 /// Default SVM compute-unit limit (`SolanaChainProvider::new`).
 const DEFAULT_SVM_CU_LIMIT: u32 = 200_000;
 
+/// XRPL keys that imply a hot wallet this family does not have.
+#[cfg(feature = "xrpl")]
+const XRPL_HOT_WALLET_KEYS: [&str; 5] =
+    ["signers", "fee_payer", "signer", "relayers", "fee_payers"];
+
 /// One configured network after schema validation.
 #[derive(Debug, Clone)]
 #[allow(
@@ -25,6 +30,18 @@ pub enum Network {
     Evm(EvmNetwork),
     /// Solana network.
     Svm(SvmNetwork),
+    /// NEAR network.
+    #[cfg(feature = "near")]
+    Near(NearNetwork),
+    /// XRPL network.
+    #[cfg(feature = "xrpl")]
+    Xrpl(XrplNetwork),
+    /// Hedera network.
+    #[cfg(feature = "hedera")]
+    Hedera(HederaNetwork),
+    /// Algorand network.
+    #[cfg(feature = "avm")]
+    Avm(AvmNetwork),
 }
 
 impl Network {
@@ -34,6 +51,14 @@ impl Network {
         match self {
             Self::Evm(net) => &net.chain_id,
             Self::Svm(net) => &net.chain_id,
+            #[cfg(feature = "near")]
+            Self::Near(net) => &net.chain_id,
+            #[cfg(feature = "xrpl")]
+            Self::Xrpl(net) => &net.chain_id,
+            #[cfg(feature = "hedera")]
+            Self::Hedera(net) => &net.chain_id,
+            #[cfg(feature = "avm")]
+            Self::Avm(net) => &net.chain_id,
         }
     }
 
@@ -43,6 +68,14 @@ impl Network {
         match self {
             Self::Evm(net) => &net.schemes,
             Self::Svm(net) => &net.schemes,
+            #[cfg(feature = "near")]
+            Self::Near(net) => &net.schemes,
+            #[cfg(feature = "xrpl")]
+            Self::Xrpl(net) => &net.schemes,
+            #[cfg(feature = "hedera")]
+            Self::Hedera(net) => &net.schemes,
+            #[cfg(feature = "avm")]
+            Self::Avm(net) => &net.schemes,
         }
     }
 
@@ -52,6 +85,14 @@ impl Network {
         match self {
             Self::Evm(net) => &net.signers,
             Self::Svm(net) => std::slice::from_ref(&net.fee_payer),
+            #[cfg(feature = "near")]
+            Self::Near(net) => &net.relayer_signer_names,
+            #[cfg(feature = "xrpl")]
+            Self::Xrpl(_) => &[],
+            #[cfg(feature = "hedera")]
+            Self::Hedera(net) => &net.fee_payer_signer_names,
+            #[cfg(feature = "avm")]
+            Self::Avm(net) => &net.signers,
         }
     }
 }
@@ -96,6 +137,98 @@ pub struct SvmNetwork {
     pub exact: Option<SvmExactConfig>,
     /// Per-network upto override.
     pub upto: Option<SvmUptoConfig>,
+}
+
+/// Named account plus `[signer.*]` reference (`relayers` / `fee_payers`).
+#[cfg(any(feature = "near", feature = "hedera"))]
+#[derive(Debug, Clone)]
+pub struct NamedAccount {
+    /// On-chain account id.
+    pub account_id: String,
+    /// Named `[signer.*]` id.
+    pub signer: String,
+}
+
+/// Parsed NEAR `[network."<caip2>"]`.
+#[cfg(feature = "near")]
+#[derive(Debug, Clone)]
+pub struct NearNetwork {
+    /// CAIP-2 id (`near:mainnet` / `near:testnet`).
+    pub chain_id: ChainId,
+    /// Optional RPC; `None` uses the SDK default.
+    pub rpc: Option<RpcConfig>,
+    /// Relayer accounts.
+    pub relayers: Vec<NamedAccount>,
+    /// Flattened `relayers[].signer` for `signer_names`.
+    pub relayer_signer_names: Vec<String>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Optional sponsored-gas cap; `None` uses the SDK default.
+    pub max_sponsored_gas: Option<u64>,
+}
+
+/// Parsed XRPL `[network."<caip2>"]`.
+#[cfg(feature = "xrpl")]
+#[derive(Debug, Clone)]
+pub struct XrplNetwork {
+    /// CAIP-2 id (`xrpl:0` / `xrpl:1` / `xrpl:2`).
+    pub chain_id: ChainId,
+    /// Optional RPC; `None` uses the SDK default for mainnet/testnet/devnet.
+    pub rpc: Option<RpcConfig>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Optional max fee in drops; `None` uses the SDK default.
+    pub max_fee_drops: Option<u64>,
+}
+
+/// Hedera `payTo` alias policy (facilitator config, not wire extra).
+#[cfg(feature = "hedera")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HederaAliasPolicy {
+    /// Reject aliases (SDK default).
+    #[default]
+    Reject,
+    /// Allow alias account creation.
+    Allow,
+}
+
+/// Parsed Hedera `[network."<caip2>"]`.
+#[cfg(feature = "hedera")]
+#[derive(Debug, Clone)]
+pub struct HederaNetwork {
+    /// CAIP-2 id (`hedera:mainnet` / `hedera:testnet`).
+    pub chain_id: ChainId,
+    /// Fee-payer accounts.
+    pub fee_payers: Vec<NamedAccount>,
+    /// Flattened `fee_payers[].signer` for `signer_names`.
+    pub fee_payer_signer_names: Vec<String>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Alias policy for `payTo`.
+    pub alias_policy: HederaAliasPolicy,
+    /// Optional Mirror Node REST URL.
+    pub mirror_url: Option<Url>,
+    /// Optional consensus node URL.
+    pub node_url: Option<Url>,
+}
+
+/// Parsed Algorand `[network."<caip2>"]`.
+#[cfg(feature = "avm")]
+#[derive(Debug, Clone)]
+pub struct AvmNetwork {
+    /// CAIP-2 id (truncated genesis hash).
+    pub chain_id: ChainId,
+    /// Optional algod URL; `None` uses AlgoNode.
+    pub algod_url: Option<Url>,
+    /// Optional env var holding an algod API token.
+    pub algod_token_env: Option<String>,
+    /// Named `[signer.*]` fee-payer references.
+    pub signers: Vec<String>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Confirmation wait rounds; `None` uses SDK default 10.
+    pub wait_rounds: Option<u32>,
 }
 
 /// RPC source: literal endpoints or one env var.
@@ -189,6 +322,90 @@ struct RawSvmNetwork {
     upto: Option<SvmUptoConfig>,
 }
 
+#[cfg(feature = "near")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawNearNetwork {
+    /// Literal RPC URL.
+    #[serde(default)]
+    rpc: Option<String>,
+    /// Env name for the RPC URL.
+    #[serde(default)]
+    rpc_env: Option<String>,
+    /// Relayer `{ account_id, signer }`.
+    relayers: Vec<RawNamedAccount>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Optional sponsored-gas cap.
+    #[serde(default)]
+    max_sponsored_gas: Option<u64>,
+}
+
+#[cfg(feature = "xrpl")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawXrplNetwork {
+    /// Literal RPC URL.
+    #[serde(default)]
+    rpc: Option<String>,
+    /// Env name for the RPC URL.
+    #[serde(default)]
+    rpc_env: Option<String>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Optional max fee in drops.
+    #[serde(default)]
+    max_fee_drops: Option<u64>,
+}
+
+#[cfg(feature = "hedera")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawHederaNetwork {
+    /// Fee payers `{ account_id, signer }`.
+    fee_payers: Vec<RawNamedAccount>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Alias policy (`reject` / `allow`).
+    #[serde(default)]
+    alias_policy: Option<HederaAliasPolicy>,
+    /// Optional Mirror Node REST URL.
+    #[serde(default)]
+    mirror_url: Option<String>,
+    /// Optional consensus node URL.
+    #[serde(default)]
+    node_url: Option<String>,
+}
+
+#[cfg(feature = "avm")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAvmNetwork {
+    /// Optional algod URL.
+    #[serde(default)]
+    algod_url: Option<String>,
+    /// Optional env name for an algod API token.
+    #[serde(default)]
+    algod_token_env: Option<String>,
+    /// Named signers.
+    signers: Vec<String>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Confirmation wait rounds.
+    #[serde(default)]
+    wait_rounds: Option<u32>,
+}
+
+#[cfg(any(feature = "near", feature = "hedera"))]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawNamedAccount {
+    /// On-chain account id.
+    account_id: String,
+    /// Named `[signer.*]` id.
+    signer: String,
+}
+
 /// Parse one network table for a hostable family.
 pub(crate) fn parse_network(
     chain_id: &ChainId,
@@ -198,6 +415,14 @@ pub(crate) fn parse_network(
     match family {
         HostableFamily::Evm => parse_evm(chain_id, value).map(Network::Evm),
         HostableFamily::Svm => parse_svm(chain_id, value).map(Network::Svm),
+        #[cfg(feature = "near")]
+        HostableFamily::Near => parse_near(chain_id, value).map(Network::Near),
+        #[cfg(feature = "xrpl")]
+        HostableFamily::Xrpl => parse_xrpl(chain_id, value).map(Network::Xrpl),
+        #[cfg(feature = "hedera")]
+        HostableFamily::Hedera => parse_hedera(chain_id, value).map(Network::Hedera),
+        #[cfg(feature = "avm")]
+        HostableFamily::Avm => parse_avm(chain_id, value).map(Network::Avm),
     }
 }
 
@@ -206,7 +431,7 @@ fn parse_evm(chain_id: &ChainId, value: toml::Value) -> Result<EvmNetwork, Error
         Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
     })?;
     require_eip155_reference(chain_id)?;
-    let rpc = exclusive_rpc(
+    let rpc = require_rpc(
         chain_id,
         raw.rpc.map(convert_evm_rpc).transpose()?,
         raw.rpc_env,
@@ -234,15 +459,11 @@ fn parse_svm(chain_id: &ChainId, value: toml::Value) -> Result<SvmNetwork, Error
     let raw: RawSvmNetwork = value.try_into().map_err(|err: toml::de::Error| {
         Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
     })?;
-    let rpc = match (raw.rpc, raw.rpc_env) {
-        (Some(url), None) => RpcConfig::Literal(vec![endpoint_from_url(&url)?]),
-        (None, Some(env)) => RpcConfig::Env(env),
-        (None, None) | (Some(_), Some(_)) => {
-            return Err(Error::config(format!(
-                "[network.\"{chain_id}\"] requires exactly one of `rpc` or `rpc_env`"
-            )));
-        }
-    };
+    let rpc = require_rpc(
+        chain_id,
+        raw.rpc.as_deref().map(single_rpc).transpose()?,
+        raw.rpc_env,
+    )?;
     let schemes = require_schemes(chain_id, HostableFamily::Svm, raw.schemes)?;
     if raw.fee_payer.is_empty() {
         return Err(Error::config(format!(
@@ -262,6 +483,143 @@ fn parse_svm(chain_id: &ChainId, value: toml::Value) -> Result<SvmNetwork, Error
     })
 }
 
+#[cfg(feature = "near")]
+fn parse_near(chain_id: &ChainId, value: toml::Value) -> Result<NearNetwork, Error> {
+    let raw: RawNearNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_near::chain::NearChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid NEAR chain id '{chain_id}'"), err))?;
+    let rpc = optional_rpc(chain_id, raw.rpc, raw.rpc_env)?;
+    let schemes = require_schemes(chain_id, HostableFamily::Near, raw.schemes)?;
+    let (relayers, relayer_signer_names) =
+        require_named_accounts(chain_id, "relayers", raw.relayers)?;
+    Ok(NearNetwork {
+        chain_id: chain_id.clone(),
+        rpc,
+        relayers,
+        relayer_signer_names,
+        schemes,
+        max_sponsored_gas: raw.max_sponsored_gas,
+    })
+}
+
+#[cfg(feature = "xrpl")]
+fn parse_xrpl(chain_id: &ChainId, value: toml::Value) -> Result<XrplNetwork, Error> {
+    reject_xrpl_hot_wallet(chain_id, &value)?;
+    let raw: RawXrplNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    let chain = r402_xrpl::chain::XrplChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid XRPL chain id '{chain_id}'"), err))?;
+    let rpc = optional_rpc(chain_id, raw.rpc, raw.rpc_env)?;
+    if rpc.is_none() && chain.default_rpc_url().is_none() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] requires `rpc` or `rpc_env` (no SDK default for this network)"
+        )));
+    }
+    let schemes = require_schemes(chain_id, HostableFamily::Xrpl, raw.schemes)?;
+    Ok(XrplNetwork {
+        chain_id: chain_id.clone(),
+        rpc,
+        schemes,
+        max_fee_drops: raw.max_fee_drops,
+    })
+}
+
+#[cfg(feature = "hedera")]
+fn parse_hedera(chain_id: &ChainId, value: toml::Value) -> Result<HederaNetwork, Error> {
+    let raw: RawHederaNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_hedera::chain::HederaChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid Hedera chain id '{chain_id}'"), err))?;
+    let schemes = require_schemes(chain_id, HostableFamily::Hedera, raw.schemes)?;
+    let (fee_payers, fee_payer_signer_names) =
+        require_named_accounts(chain_id, "fee_payers", raw.fee_payers)?;
+    Ok(HederaNetwork {
+        chain_id: chain_id.clone(),
+        fee_payers,
+        fee_payer_signer_names,
+        schemes,
+        alias_policy: raw.alias_policy.unwrap_or_default(),
+        mirror_url: raw.mirror_url.map(|url| parse_http_url(&url)).transpose()?,
+        node_url: raw.node_url.map(|url| parse_http_url(&url)).transpose()?,
+    })
+}
+
+#[cfg(feature = "avm")]
+fn parse_avm(chain_id: &ChainId, value: toml::Value) -> Result<AvmNetwork, Error> {
+    let raw: RawAvmNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_avm::chain::AlgorandChainReference::try_from(chain_id.clone()).map_err(|err| {
+        Error::config_with(format!("invalid Algorand chain id '{chain_id}'"), err)
+    })?;
+    let schemes = require_schemes(chain_id, HostableFamily::Avm, raw.schemes)?;
+    if raw.signers.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `signers` must not be empty"
+        )));
+    }
+    Ok(AvmNetwork {
+        chain_id: chain_id.clone(),
+        algod_url: raw.algod_url.map(|url| parse_http_url(&url)).transpose()?,
+        algod_token_env: raw.algod_token_env,
+        signers: raw.signers,
+        schemes,
+        wait_rounds: raw.wait_rounds,
+    })
+}
+
+#[cfg(feature = "xrpl")]
+fn reject_xrpl_hot_wallet(chain_id: &ChainId, value: &toml::Value) -> Result<(), Error> {
+    let Some(table) = value.as_table() else {
+        return Ok(());
+    };
+    for key in XRPL_HOT_WALLET_KEYS {
+        if table.contains_key(key) {
+            return Err(Error::config(format!(
+                "[network.\"{chain_id}\"] XRPL has no hot wallet; `{key}` is not valid"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "near", feature = "hedera"))]
+fn require_named_accounts(
+    chain_id: &ChainId,
+    field: &str,
+    raw: Vec<RawNamedAccount>,
+) -> Result<(Vec<NamedAccount>, Vec<String>), Error> {
+    if raw.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `{field}` must not be empty"
+        )));
+    }
+    let mut accounts = Vec::with_capacity(raw.len());
+    let mut names = Vec::with_capacity(raw.len());
+    for item in raw {
+        if item.account_id.is_empty() {
+            return Err(Error::config(format!(
+                "[network.\"{chain_id}\"] `{field}` entry `account_id` must not be empty"
+            )));
+        }
+        if item.signer.is_empty() {
+            return Err(Error::config(format!(
+                "[network.\"{chain_id}\"] `{field}` entry `signer` must not be empty"
+            )));
+        }
+        names.push(item.signer.clone());
+        accounts.push(NamedAccount {
+            account_id: item.account_id,
+            signer: item.signer,
+        });
+    }
+    Ok((accounts, names))
+}
+
 fn convert_evm_rpc(entries: Vec<RawEvmRpc>) -> Result<Vec<RpcEndpoint>, Error> {
     entries.into_iter().map(raw_evm_rpc_to_endpoint).collect()
 }
@@ -277,7 +635,12 @@ fn raw_evm_rpc_to_endpoint(entry: RawEvmRpc) -> Result<RpcEndpoint, Error> {
     }
 }
 
-fn exclusive_rpc(
+fn single_rpc(url: &str) -> Result<Vec<RpcEndpoint>, Error> {
+    Ok(vec![endpoint_from_url(url)?])
+}
+
+/// EVM / SVM: exactly one of `rpc` / `rpc_env`.
+fn require_rpc(
     chain_id: &ChainId,
     rpc: Option<Vec<RpcEndpoint>>,
     rpc_env: Option<String>,
@@ -288,6 +651,23 @@ fn exclusive_rpc(
         _ => Err(Error::config(format!(
             "[network.\"{chain_id}\"] requires exactly one of `rpc` or `rpc_env`"
         ))),
+    }
+}
+
+/// NEAR / XRPL: at most one of `rpc` / `rpc_env`. Omit = SDK default.
+#[cfg(any(feature = "near", feature = "xrpl"))]
+fn optional_rpc(
+    chain_id: &ChainId,
+    rpc: Option<String>,
+    rpc_env: Option<String>,
+) -> Result<Option<RpcConfig>, Error> {
+    match (rpc, rpc_env) {
+        (Some(_), Some(_)) => Err(Error::config(format!(
+            "[network.\"{chain_id}\"] accepts at most one of `rpc` or `rpc_env`"
+        ))),
+        (None, None) => Ok(None),
+        (Some(url), None) => Ok(Some(RpcConfig::Literal(single_rpc(&url)?))),
+        (None, Some(env)) => Ok(Some(RpcConfig::Env(env))),
     }
 }
 
@@ -331,6 +711,14 @@ const fn known_scheme_names(family: HostableFamily) -> &'static [&'static str] {
             BatchSettlementScheme::VALUE,
         ],
         HostableFamily::Svm => &[ExactScheme::VALUE, UptoScheme::VALUE],
+        #[cfg(feature = "near")]
+        HostableFamily::Near => &[ExactScheme::VALUE],
+        #[cfg(feature = "xrpl")]
+        HostableFamily::Xrpl => &[ExactScheme::VALUE],
+        #[cfg(feature = "hedera")]
+        HostableFamily::Hedera => &[ExactScheme::VALUE],
+        #[cfg(feature = "avm")]
+        HostableFamily::Avm => &[ExactScheme::VALUE],
     }
 }
 
@@ -370,4 +758,45 @@ pub(crate) fn resolve_rpc(
             Ok(vec![endpoint_from_url(raw.trim())?])
         }
     }
+}
+
+/// Look up an optional env-backed RPC. `None` stays the SDK default.
+#[cfg(any(feature = "near", feature = "xrpl"))]
+pub(crate) fn resolve_optional_rpc(
+    chain_id: &ChainId,
+    rpc: Option<&RpcConfig>,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<String>, Error> {
+    let Some(rpc) = rpc else {
+        return Ok(None);
+    };
+    let endpoints = resolve_rpc(chain_id, rpc, lookup)?;
+    let url = endpoints
+        .first()
+        .ok_or_else(|| Error::config(format!("[network.\"{chain_id}\"] has no RPC URL")))?;
+    Ok(Some(url.url.as_str().to_owned()))
+}
+
+/// Look up `algod_token_env` when set.
+#[cfg(feature = "avm")]
+pub(crate) fn resolve_algod_token(
+    chain_id: &ChainId,
+    algod_token_env: Option<&str>,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<String>, Error> {
+    let Some(env) = algod_token_env else {
+        return Ok(None);
+    };
+    let raw = lookup(env).ok_or_else(|| {
+        Error::config(format!(
+            "env var '{env}' not found for [network.\"{chain_id}\"] algod_token_env"
+        ))
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(Error::config(format!(
+            "env var '{env}' is empty for [network.\"{chain_id}\"] algod_token_env"
+        )));
+    }
+    Ok(Some(trimmed.to_owned()))
 }

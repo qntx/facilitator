@@ -144,8 +144,11 @@ The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to o
 | `svm` | ✓ | Parse Solana tables and construct `exact` and `upto` |
 | `telemetry` | ✓ | Reserved for OTLP |
 | `metrics` | ✓ | Enables `r402-facilitator/metrics` |
-| `near` / `xrpl` / `hedera` / `avm` / `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Compiled-out vs reserved family errors |
-| `experimental-tron` / `extra-casper` | | Rejected unless the feature is on |
+| `near` / `xrpl` / `hedera` / `avm` | | Host `exact` when the feature is on |
+| `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Compiled-out vs reserved family errors |
+| `experimental-tron` | | Rejected unless the feature is on |
+
+`casper:*` is always a remote-client startup error. There is no `extra-casper` feature.
 
 Schemes are config lists, not Cargo features. If `evm` is compiled, `exact` / `upto` / `auth-capture` / `batch-settlement` are known **names**.
 

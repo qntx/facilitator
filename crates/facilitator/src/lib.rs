@@ -22,11 +22,21 @@ use std::process::ExitCode;
 use clap::Parser;
 use cli::{Cli, Commands};
 pub use compose::{FacilitatorMap, build};
+#[cfg(feature = "avm")]
+pub use config::AvmNetwork;
+#[cfg(any(feature = "near", feature = "hedera"))]
+pub use config::NamedAccount;
+#[cfg(feature = "near")]
+pub use config::NearNetwork;
+#[cfg(feature = "xrpl")]
+pub use config::XrplNetwork;
 pub use config::{
     BuilderCodeToml, Config, EvmNetwork, EvmSchemeConfig, HttpAuth, HttpConfig, LogConfig,
     LogFormat, Network, RpcConfig, RpcEndpoint, SchemeTables, SvmExactConfig, SvmNetwork,
     SvmSchemeConfig, SvmUptoConfig, load_config, parse_config_toml,
 };
+#[cfg(feature = "hedera")]
+pub use config::{HederaAliasPolicy, HederaNetwork};
 pub use error::Error;
 pub use http::{AppState, HttpTimeouts, router, router_from_config, router_with_timeouts};
 pub use metrics::{MetricsHandle, metrics_router};

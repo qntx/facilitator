@@ -26,18 +26,24 @@ evm = [
     "dep:alloy-signer-local",
 ]
 svm = ["dep:r402-svm", "dep:solana-keypair"]
-near = []
-xrpl = []
-hedera = []
-avm = []
+near = ["dep:r402-near", "r402-near/facilitator"]
+xrpl = ["dep:r402-xrpl", "r402-xrpl/facilitator"]
+hedera = ["dep:r402-hedera", "r402-hedera/facilitator"]
+avm = ["dep:r402-avm", "r402-avm/facilitator"]
 aptos = []
 keeta = []
 tvm = []
 stellar = []
 concordium = []
 experimental-tron = []
-extra-casper = []
-telemetry = ["r402-evm?/telemetry", "r402-svm?/telemetry"]
+telemetry = [
+    "r402-evm?/telemetry",
+    "r402-svm?/telemetry",
+    "r402-near?/telemetry",
+    "r402-xrpl?/telemetry",
+    "r402-hedera?/telemetry",
+    "r402-avm?/telemetry",
+]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "r402-facilitator/metrics"]
 
 [dependencies]
@@ -67,6 +73,10 @@ url = { workspace = true }
 r402-evm = { version = "0.19.1", path = "../../../r402/crates/r402-evm", default-features = false, features = ["facilitator"], optional = true }
 r402-extensions = { version = "0.19.1", path = "../../../r402/crates/r402-extensions", default-features = false, features = ["ext-builder-code", "ext-erc20-approval"], optional = true }
 r402-svm = { version = "0.19.1", path = "../../../r402/crates/r402-svm", default-features = false, features = ["facilitator"], optional = true }
+r402-near = { version = "0.19.1", path = "../../../r402/crates/r402-near", default-features = false, optional = true }
+r402-xrpl = { version = "0.19.1", path = "../../../r402/crates/r402-xrpl", default-features = false, optional = true }
+r402-hedera = { version = "0.19.1", path = "../../../r402/crates/r402-hedera", default-features = false, optional = true }
+r402-avm = { version = "0.19.1", path = "../../../r402/crates/r402-avm", default-features = false, optional = true }
 solana-keypair = { workspace = true, optional = true }
 
 [dev-dependencies]
