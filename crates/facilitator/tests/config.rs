@@ -52,9 +52,19 @@ receipt_timeout_secs = 20
 fn example_toml_parses_evm_exact_only() {
     let cfg = parse_config_toml(&repo_file("config.example.toml")).expect("example parses");
     assert_eq!(cfg.networks.len(), 2, "base sepolia + base");
+    let ids: Vec<String> = cfg
+        .networks
+        .iter()
+        .map(|network| network.chain_id().to_string())
+        .collect();
+    assert_eq!(
+        ids,
+        ["eip155:84532".to_owned(), "eip155:8453".to_owned()],
+        "TOML appearance order"
+    );
     for network in &cfg.networks {
         assert_eq!(network.chain_id().namespace(), "eip155", "evm only");
-        assert_eq!(network.schemes(), &["exact".to_owned()], "PR 1 exact only");
+        assert_eq!(network.schemes(), &["exact".to_owned()], "exact only");
     }
 }
 
@@ -83,7 +93,7 @@ fn full_example_parses_as_documentation() {
         assert_eq!(
             schemes,
             ["exact".to_owned()].as_slice(),
-            "full example EVM stays exact in PR 1"
+            "full example EVM stays exact"
         );
     }
 }
@@ -247,6 +257,36 @@ schemes = ["exact"]
             .contains("exactly one of `rpc` or `rpc_env`"),
         "got {err}"
     );
+}
+
+#[test]
+fn rpc_object_unknown_field_fails() {
+    let raw = r#"
+[signer.evm_hot]
+source = "env"
+env = "FACILITATOR_EVM_KEY"
+[network."eip155:84532"]
+rpc = [{ http = "https://sepolia.base.org", rate_limt = 50 }]
+signers = ["evm_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("invalid [network.\"eip155:84532\"]"),
+        "got {err}"
+    );
+}
+
+#[test]
+fn empty_env_secret_fails() {
+    let src = facilitator::SecretSource::Env {
+        env: "FACILITATOR_EVM_KEY".to_owned(),
+    };
+    let err = src
+        .resolve(&|_| Some("  \n".to_owned()))
+        .expect_err("empty env");
+    assert!(err.to_string().contains("is empty"), "got {err}");
 }
 
 #[test]

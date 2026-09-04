@@ -1,31 +1,36 @@
-//! Axum router. PR 1 exposes `GET /supported` only.
+//! Axum router for facilitator protocol routes.
 
 use std::sync::Arc;
 
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
-use r402_facilitator::Facilitator;
+use r402_facilitator::DynFacilitator;
 use r402_protocol::payment::SupportedResponse;
 
-use crate::compose::FacilitatorMap;
-
 /// Shared HTTP state.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppState {
-    /// Scheme map (may be empty in this PR).
-    facilitator: Arc<FacilitatorMap>,
+    /// In-process scheme handlers.
+    facilitator: Arc<dyn DynFacilitator>,
+}
+
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppState").finish_non_exhaustive()
+    }
 }
 
 impl AppState {
-    /// Wrap a map for the router.
+    /// Wrap a facilitator for the router.
     #[must_use]
-    pub const fn new(facilitator: Arc<FacilitatorMap>) -> Self {
+    pub fn new(facilitator: Arc<dyn DynFacilitator>) -> Self {
         Self { facilitator }
     }
 }
 
-/// Protocol router. Timeouts, auth, and ops routes are later PRs.
+/// Protocol router.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/supported", get(get_supported))
@@ -33,13 +38,14 @@ pub fn router(state: AppState) -> Router {
 }
 
 /// `GET /supported` — spec §7.3. Empty map yields `kinds: []`.
-async fn get_supported(State(state): State<AppState>) -> Json<SupportedResponse> {
-    let body = match Facilitator::supported(state.facilitator.as_ref()).await {
-        Ok(supported) => supported,
+async fn get_supported(
+    State(state): State<AppState>,
+) -> Result<Json<SupportedResponse>, StatusCode> {
+    match DynFacilitator::supported(state.facilitator.as_ref()).await {
+        Ok(supported) => Ok(Json(supported)),
         Err(error) => {
             tracing::error!(?error, "supported aggregation failed");
-            SupportedResponse::new()
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
-    };
-    Json(body)
+    }
 }

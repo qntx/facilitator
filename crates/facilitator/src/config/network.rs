@@ -141,18 +141,22 @@ struct RawEvmNetwork {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawEvmRpcEndpoint {
+    /// HTTP URL.
+    http: String,
+    /// Optional rate limit.
+    #[serde(default)]
+    rate_limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum RawEvmRpc {
     /// Bare URL string.
     Url(String),
     /// `{ http, rate_limit }`.
-    Endpoint {
-        /// HTTP URL.
-        http: String,
-        /// Optional rate limit.
-        #[serde(default)]
-        rate_limit: Option<u32>,
-    },
+    Endpoint(RawEvmRpcEndpoint),
 }
 
 #[derive(Debug, Deserialize)]
@@ -265,7 +269,7 @@ fn convert_evm_rpc(entries: Vec<RawEvmRpc>) -> Result<Vec<RpcEndpoint>, Error> {
 fn raw_evm_rpc_to_endpoint(entry: RawEvmRpc) -> Result<RpcEndpoint, Error> {
     match entry {
         RawEvmRpc::Url(url) => endpoint_from_url(&url),
-        RawEvmRpc::Endpoint { http, rate_limit } => {
+        RawEvmRpc::Endpoint(RawEvmRpcEndpoint { http, rate_limit }) => {
             let mut endpoint = endpoint_from_url(&http)?;
             endpoint.rate_limit = rate_limit;
             Ok(endpoint)

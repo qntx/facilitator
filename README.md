@@ -17,13 +17,22 @@ Built on [r402](https://github.com/qntx/r402) **0.19.1**. This is facilitator 2.
 
 This skeleton parses the 2.0 config schema and serves `GET /supported` from an in-process map that may be empty. EVM/SVM constructors, `/verify`, `/settle`, health, metrics, and deploy artifacts land in later commits.
 
+`crates/facilitator` path-depends on a **sibling** r402 checkout (`../../../r402/crates/...` from that crate). Clone both repos next to each other; CI clones `qntx/r402` at tag `v0.19.1` into the same layout.
+
+```text
+<parent>/
+  facilitator/    # this repo
+  r402/           # git clone --branch v0.19.1 https://github.com/qntx/r402
+```
+
 ## Quick Start
 
 ```bash
-facilitator init
+# from <parent>/facilitator, with <parent>/r402 present
+cargo run -p facilitator -- init
 # edit config.toml — named [signer.*] tables, env/file secrets only
-facilitator validate -c config.toml
-facilitator serve -c config.toml
+cargo run -p facilitator -- validate -c config.toml
+cargo run -p facilitator -- serve -c config.toml
 ```
 
 Requires **Rust 1.95**.

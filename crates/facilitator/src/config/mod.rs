@@ -36,7 +36,7 @@ pub struct Config {
     pub signers: BTreeMap<String, SecretSource>,
     /// Global scheme knobs.
     pub scheme: SchemeTables,
-    /// Networks in TOML key order.
+    /// Networks in TOML appearance order.
     pub networks: Vec<Network>,
 }
 
@@ -55,9 +55,9 @@ struct RawConfig {
     /// `[scheme.*]` tables.
     #[serde(default)]
     scheme: SchemeTables,
-    /// `[network."<caip2>"]` tables.
+    /// `[network."<caip2>"]` tables (insertion order).
     #[serde(default)]
-    network: BTreeMap<String, toml::Value>,
+    network: toml::Table,
     /// Reserved discovery table.
     #[serde(default)]
     discovery: Option<DiscoveryConfig>,
@@ -121,7 +121,7 @@ fn reject_discovery(discovery: Option<&DiscoveryConfig>) -> Result<(), Error> {
     Ok(())
 }
 
-fn parse_networks(raw: BTreeMap<String, toml::Value>) -> Result<Vec<Network>, Error> {
+fn parse_networks(raw: toml::Table) -> Result<Vec<Network>, Error> {
     if raw.is_empty() {
         return Err(Error::config(
             "empty [network]; a facilitator with no kinds is useless",
