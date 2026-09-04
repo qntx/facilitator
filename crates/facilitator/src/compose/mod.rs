@@ -1,16 +1,21 @@
 //! Private `FacilitatorMap` dispatching by `SchemeSlug`.
 
+#[cfg(feature = "evm")]
+mod evm;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use compact_str::CompactString;
 use r402_facilitator::{DynFacilitator, Facilitator};
+use r402_protocol::ChainId;
 use r402_protocol::error::{FacilitatorError, VerificationError};
 use r402_protocol::payment::{
     SettleRequest, SettleResponse, SupportedResponse, VerifyRequest, VerifyResponse,
 };
 use r402_protocol::scheme::SchemeSlug;
 
+use crate::config::{Config, Network};
 use crate::error::Error;
 
 /// In-process scheme handlers keyed by `SchemeSlug`.
@@ -97,6 +102,41 @@ impl Facilitator for FacilitatorMap {
     }
 }
 
+/// Construct in-process scheme handlers from `config`.
+///
+/// Uses `with_settlement_cache` as a constructor (never `try_new`) so every
+/// EVM exact handler shares the process [`r402_facilitator::SettlementCache`].
+/// A listed scheme without a constructor in this build is an error. The
+/// returned map is nonempty.
+///
+/// # Errors
+///
+/// Unresolvable secrets, invalid keys, provider construction failure, a listed
+/// scheme this build cannot construct, or an empty map.
+pub fn build(
+    config: &Config,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<FacilitatorMap, Error> {
+    let mut map = FacilitatorMap::new();
+    #[cfg(feature = "evm")]
+    let evm = evm::Prepare::new(config)?;
+    for network in &config.networks {
+        match network {
+            Network::Evm(net) => {
+                #[cfg(feature = "evm")]
+                evm.register(&mut map, net, config, lookup)?;
+                #[cfg(not(feature = "evm"))]
+                reject_unconstructed(&net.chain_id, &net.schemes)?;
+            }
+            Network::Svm(net) => reject_unconstructed(&net.chain_id, &net.schemes)?,
+        }
+    }
+    #[cfg(feature = "evm")]
+    evm.finish(&mut map);
+    require_nonempty(&map)?;
+    Ok(map)
+}
+
 fn lookup_slug(slug: Option<SchemeSlug>) -> Result<SchemeSlug, FacilitatorError> {
     slug.ok_or_else(|| VerificationError::from_wire("invalid_x402_version").into())
 }
@@ -178,5 +218,63 @@ fn extend_unique(existing: &mut Vec<CompactString>, addrs: Vec<CompactString>) {
         if !existing.contains(&addr) {
             existing.push(addr);
         }
+    }
+}
+
+fn reject_unconstructed(chain_id: &ChainId, schemes: &[String]) -> Result<(), Error> {
+    let Some(name) = schemes.first() else {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `schemes` must not be empty"
+        )));
+    };
+    Err(scheme_not_enabled(name, chain_id))
+}
+
+fn scheme_not_enabled(name: &str, chain_id: &ChainId) -> Error {
+    Error::config(format!(
+        "scheme '{name}' on {chain_id} is not enabled in this build"
+    ))
+}
+
+fn require_nonempty(map: &FacilitatorMap) -> Result<(), Error> {
+    if map.is_empty() {
+        return Err(Error::config(
+            "nonempty constructed map required; no scheme handlers were registered",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "unit tests"
+)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn empty_map_is_startup_error() {
+        let err = require_nonempty(&FacilitatorMap::new()).expect_err("empty");
+        assert!(
+            err.to_string()
+                .contains("nonempty constructed map required"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn listed_scheme_without_constructor_is_startup_error() {
+        let chain = ChainId::from_str("eip155:84532").expect("caip-2");
+        let err = scheme_not_enabled("upto", &chain);
+        assert!(
+            err.to_string()
+                .contains("scheme 'upto' on eip155:84532 is not enabled in this build"),
+            "got {err}"
+        );
     }
 }

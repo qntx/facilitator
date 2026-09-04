@@ -21,7 +21,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-pub use compose::FacilitatorMap;
+pub use compose::{FacilitatorMap, build};
 pub use config::{
     BuilderCodeToml, Config, EvmNetwork, EvmSchemeConfig, HttpAuth, HttpConfig, LogConfig,
     LogFormat, Network, RpcConfig, RpcEndpoint, SchemeTables, SvmExactConfig, SvmNetwork,
@@ -48,7 +48,7 @@ async fn dispatch(cli: Cli) -> Result<(), Error> {
         Commands::Init { output, force } => cli::run_init(&output, force),
         Commands::Validate => {
             let config = load_config(&cli.config)?;
-            cli::run_validate(&config)
+            cli::run_validate(&config).await
         }
         Commands::Serve => {
             let config = load_config(&cli.config)?;
