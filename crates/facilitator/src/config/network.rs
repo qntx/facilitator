@@ -1,5 +1,8 @@
 //! Per-network tables keyed by CAIP-2 id.
 
+#[cfg(feature = "concordium")]
+use std::time::Duration;
+
 use r402_protocol::{AuthCaptureScheme, BatchSettlementScheme, ChainId, ExactScheme, UptoScheme};
 use serde::Deserialize;
 use url::Url;
@@ -18,6 +21,10 @@ const DEFAULT_SVM_CU_LIMIT: u32 = 200_000;
 #[cfg(feature = "xrpl")]
 const XRPL_HOT_WALLET_KEYS: [&str; 5] =
     ["signers", "fee_payer", "signer", "relayers", "fee_payers"];
+
+/// Keeta has no RPC; these keys are operator mistakes.
+#[cfg(feature = "keeta")]
+const KEETA_RPC_KEYS: [&str; 2] = ["rpc", "rpc_env"];
 
 /// One configured network after schema validation.
 #[derive(Debug, Clone)]
@@ -42,6 +49,21 @@ pub enum Network {
     /// Algorand network.
     #[cfg(feature = "avm")]
     Avm(AvmNetwork),
+    /// Aptos network.
+    #[cfg(feature = "aptos")]
+    Aptos(AptosNetwork),
+    /// Keeta network.
+    #[cfg(feature = "keeta")]
+    Keeta(KeetaNetwork),
+    /// TON / TVM network.
+    #[cfg(feature = "tvm")]
+    Tvm(TvmNetwork),
+    /// Stellar network.
+    #[cfg(feature = "stellar")]
+    Stellar(StellarNetwork),
+    /// Concordium network.
+    #[cfg(feature = "concordium")]
+    Concordium(ConcordiumNetwork),
 }
 
 impl Network {
@@ -59,6 +81,16 @@ impl Network {
             Self::Hedera(net) => &net.chain_id,
             #[cfg(feature = "avm")]
             Self::Avm(net) => &net.chain_id,
+            #[cfg(feature = "aptos")]
+            Self::Aptos(net) => &net.chain_id,
+            #[cfg(feature = "keeta")]
+            Self::Keeta(net) => &net.chain_id,
+            #[cfg(feature = "tvm")]
+            Self::Tvm(net) => &net.chain_id,
+            #[cfg(feature = "stellar")]
+            Self::Stellar(net) => &net.chain_id,
+            #[cfg(feature = "concordium")]
+            Self::Concordium(net) => &net.chain_id,
         }
     }
 
@@ -76,6 +108,16 @@ impl Network {
             Self::Hedera(net) => &net.schemes,
             #[cfg(feature = "avm")]
             Self::Avm(net) => &net.schemes,
+            #[cfg(feature = "aptos")]
+            Self::Aptos(net) => &net.schemes,
+            #[cfg(feature = "keeta")]
+            Self::Keeta(net) => &net.schemes,
+            #[cfg(feature = "tvm")]
+            Self::Tvm(net) => &net.schemes,
+            #[cfg(feature = "stellar")]
+            Self::Stellar(net) => &net.schemes,
+            #[cfg(feature = "concordium")]
+            Self::Concordium(net) => &net.schemes,
         }
     }
 
@@ -93,6 +135,16 @@ impl Network {
             Self::Hedera(net) => &net.fee_payer_signer_names,
             #[cfg(feature = "avm")]
             Self::Avm(net) => &net.signers,
+            #[cfg(feature = "aptos")]
+            Self::Aptos(net) => &net.fee_payers,
+            #[cfg(feature = "keeta")]
+            Self::Keeta(net) => std::slice::from_ref(&net.signer),
+            #[cfg(feature = "tvm")]
+            Self::Tvm(net) => std::slice::from_ref(&net.signer),
+            #[cfg(feature = "stellar")]
+            Self::Stellar(net) => &net.signer_names,
+            #[cfg(feature = "concordium")]
+            Self::Concordium(net) => &net.signer_names,
         }
     }
 }
@@ -229,6 +281,128 @@ pub struct AvmNetwork {
     pub schemes: Vec<String>,
     /// Confirmation wait rounds; `None` uses SDK default 10.
     pub wait_rounds: Option<u32>,
+}
+
+/// Parsed Aptos `[network."<caip2>"]`.
+#[cfg(feature = "aptos")]
+#[derive(Debug, Clone)]
+pub struct AptosNetwork {
+    /// CAIP-2 id (`aptos:1` / `aptos:2`).
+    pub chain_id: ChainId,
+    /// Optional RPC; `None` uses the SDK default fullnode.
+    pub rpc: Option<RpcConfig>,
+    /// Named `[signer.*]` fee-payer references.
+    pub fee_payers: Vec<String>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Whether `/supported` advertises sponsorship (SDK default true).
+    pub sponsor_transactions: bool,
+}
+
+/// Parsed Keeta `[network."<caip2>"]`.
+#[cfg(feature = "keeta")]
+#[derive(Debug, Clone)]
+pub struct KeetaNetwork {
+    /// CAIP-2 id (`keeta:21378` / `keeta:1413829460`).
+    pub chain_id: ChainId,
+    /// Named `[signer.*]` 32-byte ed25519 seed.
+    pub signer: String,
+    /// Derivation indices for `KeetaFeePayer::from_ed25519_seed`.
+    pub indices: Vec<u32>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+}
+
+/// Parsed TVM `[network."<caip2>"]`.
+#[cfg(feature = "tvm")]
+#[derive(Debug, Clone)]
+pub struct TvmNetwork {
+    /// CAIP-2 id (`tvm:-239` / `tvm:-3`).
+    pub chain_id: ChainId,
+    /// Optional Toncenter/TonAPI base URL; `None` uses the SDK default.
+    pub provider_base_url: Option<Url>,
+    /// Optional env var holding a REST API key (independent of the URL).
+    pub api_key_env: Option<String>,
+    /// Named `[signer.*]` Highload V3 key.
+    pub signer: String,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Highload subwallet id; `None` uses SDK `0x10ad`.
+    pub subwallet_id: Option<u32>,
+    /// Highload timeout seconds; `None` uses SDK `3600`.
+    pub timeout: Option<u32>,
+    /// Wallet workchain; `None` uses `0`.
+    pub workchain: Option<i32>,
+    /// Batcher idle flush interval; `None` uses the SDK default.
+    pub batch_flush_interval_seconds: Option<u64>,
+    /// Queue length that triggers a flush; `None` uses the SDK default.
+    pub batch_flush_size: Option<usize>,
+    /// Trace confirmation timeout; `None` uses the SDK default.
+    pub confirmation_timeout_seconds: Option<u64>,
+}
+
+/// Parsed Stellar `[network."<caip2>"]`.
+#[cfg(feature = "stellar")]
+#[derive(Debug, Clone)]
+pub struct StellarNetwork {
+    /// CAIP-2 id (`stellar:pubnet` / `stellar:testnet`).
+    pub chain_id: ChainId,
+    /// Optional RPC; `None` uses the SDK default on testnet. Pubnet requires one.
+    pub rpc: Option<RpcConfig>,
+    /// Named inner-transaction signers.
+    pub signers: Vec<String>,
+    /// Optional named fee-bump signer.
+    pub fee_bump: Option<String>,
+    /// Flattened `signers` plus `fee_bump` for `signer_names`.
+    pub signer_names: Vec<String>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Optional Horizon base URL.
+    pub horizon_url: Option<Url>,
+    /// Settlement-fee ceiling in stroops; `None` uses the SDK default.
+    pub max_transaction_fee_stroops: Option<u32>,
+}
+
+/// Named Concordium account plus `[signer.*]` reference.
+#[cfg(feature = "concordium")]
+#[derive(Debug, Clone)]
+pub struct ConcordiumAccount {
+    /// `Base58Check` account address.
+    pub address: String,
+    /// Named `[signer.*]` id.
+    pub signer: String,
+}
+
+/// Literal gRPC endpoint or env var name.
+#[cfg(feature = "concordium")]
+#[derive(Debug, Clone)]
+pub enum GrpcConfig {
+    /// URI or `host:port` from TOML.
+    Literal(String),
+    /// Environment variable holding a URI or `host:port`.
+    Env(String),
+}
+
+/// Parsed Concordium `[network."<caip2>"]`.
+#[cfg(feature = "concordium")]
+#[derive(Debug, Clone)]
+pub struct ConcordiumNetwork {
+    /// CAIP-2 id (genesis-hash reference).
+    pub chain_id: ChainId,
+    /// Optional gRPC; `None` uses `default_grpc_https()`.
+    pub grpc: Option<GrpcConfig>,
+    /// Sponsor accounts.
+    pub signers: Vec<ConcordiumAccount>,
+    /// Flattened `signers[].signer` for `signer_names`.
+    pub signer_names: Vec<String>,
+    /// Scheme names (`exact`).
+    pub schemes: Vec<String>,
+    /// Whether settle waits for `ConcordiumBFT` finalization.
+    pub require_finalization: bool,
+    /// Finalization wait; `None` uses the SDK default.
+    pub finalization_timeout: Option<Duration>,
+    /// Spec Rule 7 expiry cap; `None` uses the SDK default.
+    pub max_expiry_offset_seconds: Option<u64>,
 }
 
 /// RPC source: literal endpoints or one env var.
@@ -396,6 +570,134 @@ struct RawAvmNetwork {
     wait_rounds: Option<u32>,
 }
 
+#[cfg(feature = "aptos")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAptosNetwork {
+    /// Literal RPC URL.
+    #[serde(default)]
+    rpc: Option<String>,
+    /// Env name for the RPC URL.
+    #[serde(default)]
+    rpc_env: Option<String>,
+    /// Named fee-payer signers.
+    fee_payers: Vec<String>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Sponsorship advertised on `/supported`.
+    #[serde(default)]
+    sponsor_transactions: Option<bool>,
+}
+
+#[cfg(feature = "keeta")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawKeetaNetwork {
+    /// Named `[signer.*]` seed.
+    signer: String,
+    /// Derivation indices.
+    indices: Vec<u32>,
+    /// Scheme names.
+    schemes: Vec<String>,
+}
+
+#[cfg(feature = "tvm")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTvmNetwork {
+    /// Toncenter/TonAPI base URL override.
+    #[serde(default)]
+    provider_base_url: Option<String>,
+    /// Alias for `provider_base_url` (mutually exclusive).
+    #[serde(default)]
+    rpc: Option<String>,
+    /// Env name for a REST API key (not xor with the URL).
+    #[serde(default)]
+    api_key_env: Option<String>,
+    /// Named Highload V3 signer.
+    signer: String,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Highload subwallet id.
+    #[serde(default)]
+    subwallet_id: Option<u32>,
+    /// Highload timeout seconds.
+    #[serde(default)]
+    timeout: Option<u32>,
+    /// Wallet workchain.
+    #[serde(default)]
+    workchain: Option<i32>,
+    /// Batcher idle flush interval.
+    #[serde(default)]
+    batch_flush_interval_seconds: Option<u64>,
+    /// Queue length that triggers a flush.
+    #[serde(default)]
+    batch_flush_size: Option<usize>,
+    /// Trace confirmation timeout.
+    #[serde(default)]
+    confirmation_timeout_seconds: Option<u64>,
+}
+
+#[cfg(feature = "stellar")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawStellarNetwork {
+    /// Literal RPC URL.
+    #[serde(default)]
+    rpc: Option<String>,
+    /// Env name for the RPC URL.
+    #[serde(default)]
+    rpc_env: Option<String>,
+    /// Named inner-transaction signers.
+    signers: Vec<String>,
+    /// Optional named fee-bump signer.
+    #[serde(default)]
+    fee_bump: Option<String>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Optional Horizon URL.
+    #[serde(default)]
+    horizon_url: Option<String>,
+    /// Settlement-fee ceiling in stroops.
+    #[serde(default)]
+    max_transaction_fee_stroops: Option<u32>,
+}
+
+#[cfg(feature = "concordium")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConcordiumNetwork {
+    /// Literal gRPC URI or `host:port`.
+    #[serde(default)]
+    grpc: Option<String>,
+    /// Env name for the gRPC endpoint.
+    #[serde(default)]
+    grpc_env: Option<String>,
+    /// Sponsor `{ address, signer }`.
+    signers: Vec<RawConcordiumAccount>,
+    /// Scheme names.
+    schemes: Vec<String>,
+    /// Wait for finalization (default true).
+    #[serde(default)]
+    require_finalization: Option<bool>,
+    /// Finalization wait timeout.
+    #[serde(default, with = "humantime_serde::option")]
+    finalization_timeout: Option<Duration>,
+    /// Spec Rule 7 expiry cap.
+    #[serde(default)]
+    max_expiry_offset_seconds: Option<u64>,
+}
+
+#[cfg(feature = "concordium")]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConcordiumAccount {
+    /// `Base58Check` account address.
+    address: String,
+    /// Named `[signer.*]` id.
+    signer: String,
+}
+
 #[cfg(any(feature = "near", feature = "hedera"))]
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -423,6 +725,16 @@ pub(crate) fn parse_network(
         HostableFamily::Hedera => parse_hedera(chain_id, value).map(Network::Hedera),
         #[cfg(feature = "avm")]
         HostableFamily::Avm => parse_avm(chain_id, value).map(Network::Avm),
+        #[cfg(feature = "aptos")]
+        HostableFamily::Aptos => parse_aptos(chain_id, value).map(Network::Aptos),
+        #[cfg(feature = "keeta")]
+        HostableFamily::Keeta => parse_keeta(chain_id, value).map(Network::Keeta),
+        #[cfg(feature = "tvm")]
+        HostableFamily::Tvm => parse_tvm(chain_id, value).map(Network::Tvm),
+        #[cfg(feature = "stellar")]
+        HostableFamily::Stellar => parse_stellar(chain_id, value).map(Network::Stellar),
+        #[cfg(feature = "concordium")]
+        HostableFamily::Concordium => parse_concordium(chain_id, value).map(Network::Concordium),
     }
 }
 
@@ -575,6 +887,143 @@ fn parse_avm(chain_id: &ChainId, value: toml::Value) -> Result<AvmNetwork, Error
     })
 }
 
+#[cfg(feature = "aptos")]
+fn parse_aptos(chain_id: &ChainId, value: toml::Value) -> Result<AptosNetwork, Error> {
+    let raw: RawAptosNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_aptos::chain::AptosChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid Aptos chain id '{chain_id}'"), err))?;
+    let rpc = optional_rpc(chain_id, raw.rpc, raw.rpc_env)?;
+    let schemes = require_schemes(chain_id, HostableFamily::Aptos, raw.schemes)?;
+    if raw.fee_payers.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `fee_payers` must not be empty"
+        )));
+    }
+    Ok(AptosNetwork {
+        chain_id: chain_id.clone(),
+        rpc,
+        fee_payers: raw.fee_payers,
+        schemes,
+        sponsor_transactions: raw.sponsor_transactions.unwrap_or(true),
+    })
+}
+
+#[cfg(feature = "keeta")]
+fn parse_keeta(chain_id: &ChainId, value: toml::Value) -> Result<KeetaNetwork, Error> {
+    reject_keeta_rpc(chain_id, &value)?;
+    let raw: RawKeetaNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_keeta::chain::KeetaChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid Keeta chain id '{chain_id}'"), err))?;
+    let schemes = require_schemes(chain_id, HostableFamily::Keeta, raw.schemes)?;
+    if raw.signer.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `signer` must not be empty"
+        )));
+    }
+    if raw.indices.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `indices` must not be empty"
+        )));
+    }
+    Ok(KeetaNetwork {
+        chain_id: chain_id.clone(),
+        signer: raw.signer,
+        indices: raw.indices,
+        schemes,
+    })
+}
+
+#[cfg(feature = "tvm")]
+fn parse_tvm(chain_id: &ChainId, value: toml::Value) -> Result<TvmNetwork, Error> {
+    let raw: RawTvmNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_tvm::chain::TvmChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid TVM chain id '{chain_id}'"), err))?;
+    let provider_base_url = optional_tvm_url(chain_id, raw.provider_base_url, raw.rpc)?;
+    let schemes = require_schemes(chain_id, HostableFamily::Tvm, raw.schemes)?;
+    if raw.signer.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `signer` must not be empty"
+        )));
+    }
+    Ok(TvmNetwork {
+        chain_id: chain_id.clone(),
+        provider_base_url,
+        api_key_env: raw.api_key_env,
+        signer: raw.signer,
+        schemes,
+        subwallet_id: raw.subwallet_id,
+        timeout: raw.timeout,
+        workchain: raw.workchain,
+        batch_flush_interval_seconds: raw.batch_flush_interval_seconds,
+        batch_flush_size: raw.batch_flush_size,
+        confirmation_timeout_seconds: raw.confirmation_timeout_seconds,
+    })
+}
+
+#[cfg(feature = "stellar")]
+fn parse_stellar(chain_id: &ChainId, value: toml::Value) -> Result<StellarNetwork, Error> {
+    let raw: RawStellarNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    let chain = r402_stellar::chain::StellarChainReference::try_from(chain_id.clone())
+        .map_err(|err| Error::config_with(format!("invalid Stellar chain id '{chain_id}'"), err))?;
+    let rpc = optional_rpc(chain_id, raw.rpc, raw.rpc_env)?;
+    if rpc.is_none() && chain.default_rpc_url().is_none() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] requires `rpc` or `rpc_env` (stellar pubnet has no SDK default)"
+        )));
+    }
+    let schemes = require_schemes(chain_id, HostableFamily::Stellar, raw.schemes)?;
+    if raw.signers.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `signers` must not be empty"
+        )));
+    }
+    let signer_names = stellar_signer_names(&raw.signers, raw.fee_bump.as_deref());
+    Ok(StellarNetwork {
+        chain_id: chain_id.clone(),
+        rpc,
+        signers: raw.signers,
+        fee_bump: raw.fee_bump,
+        signer_names,
+        schemes,
+        horizon_url: raw
+            .horizon_url
+            .map(|url| parse_http_url(&url))
+            .transpose()?,
+        max_transaction_fee_stroops: raw.max_transaction_fee_stroops,
+    })
+}
+
+#[cfg(feature = "concordium")]
+fn parse_concordium(chain_id: &ChainId, value: toml::Value) -> Result<ConcordiumNetwork, Error> {
+    let raw: RawConcordiumNetwork = value.try_into().map_err(|err: toml::de::Error| {
+        Error::config(format!("invalid [network.\"{chain_id}\"]: {err}"))
+    })?;
+    r402_concordium::chain::ConcordiumChainReference::try_from(chain_id.clone()).map_err(
+        |err| Error::config_with(format!("invalid Concordium chain id '{chain_id}'"), err),
+    )?;
+    let grpc = optional_grpc(chain_id, raw.grpc, raw.grpc_env)?;
+    let schemes = require_schemes(chain_id, HostableFamily::Concordium, raw.schemes)?;
+    let (signers, signer_names) = require_concordium_accounts(chain_id, raw.signers)?;
+    Ok(ConcordiumNetwork {
+        chain_id: chain_id.clone(),
+        grpc,
+        signers,
+        signer_names,
+        schemes,
+        require_finalization: raw.require_finalization.unwrap_or(true),
+        finalization_timeout: raw.finalization_timeout,
+        max_expiry_offset_seconds: raw.max_expiry_offset_seconds,
+    })
+}
+
 #[cfg(feature = "xrpl")]
 fn reject_xrpl_hot_wallet(chain_id: &ChainId, value: &toml::Value) -> Result<(), Error> {
     let Some(table) = value.as_table() else {
@@ -588,6 +1037,64 @@ fn reject_xrpl_hot_wallet(chain_id: &ChainId, value: &toml::Value) -> Result<(),
         }
     }
     Ok(())
+}
+
+#[cfg(feature = "keeta")]
+fn reject_keeta_rpc(chain_id: &ChainId, value: &toml::Value) -> Result<(), Error> {
+    let Some(table) = value.as_table() else {
+        return Ok(());
+    };
+    for key in KEETA_RPC_KEYS {
+        if table.contains_key(key) {
+            return Err(Error::config(format!(
+                "[network.\"{chain_id}\"] Keeta has no RPC; `{key}` is not valid"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "stellar")]
+fn stellar_signer_names(signers: &[String], fee_bump: Option<&str>) -> Vec<String> {
+    let mut names = signers.to_vec();
+    if let Some(bump) = fee_bump
+        && !names.iter().any(|name| name == bump)
+    {
+        names.push(bump.to_owned());
+    }
+    names
+}
+
+#[cfg(feature = "concordium")]
+fn require_concordium_accounts(
+    chain_id: &ChainId,
+    raw: Vec<RawConcordiumAccount>,
+) -> Result<(Vec<ConcordiumAccount>, Vec<String>), Error> {
+    if raw.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `signers` must not be empty"
+        )));
+    }
+    let mut accounts = Vec::with_capacity(raw.len());
+    let mut names = Vec::with_capacity(raw.len());
+    for item in raw {
+        if item.address.is_empty() {
+            return Err(Error::config(format!(
+                "[network.\"{chain_id}\"] `signers` entry `address` must not be empty"
+            )));
+        }
+        if item.signer.is_empty() {
+            return Err(Error::config(format!(
+                "[network.\"{chain_id}\"] `signers` entry `signer` must not be empty"
+            )));
+        }
+        names.push(item.signer.clone());
+        accounts.push(ConcordiumAccount {
+            address: item.address,
+            signer: item.signer,
+        });
+    }
+    Ok((accounts, names))
 }
 
 #[cfg(any(feature = "near", feature = "hedera"))]
@@ -657,8 +1164,13 @@ fn require_rpc(
     }
 }
 
-/// NEAR / XRPL: at most one of `rpc` / `rpc_env`. Omit = SDK default.
-#[cfg(any(feature = "near", feature = "xrpl"))]
+/// NEAR / XRPL / Aptos / Stellar: at most one of `rpc` / `rpc_env`. Omit = SDK default.
+#[cfg(any(
+    feature = "near",
+    feature = "xrpl",
+    feature = "aptos",
+    feature = "stellar"
+))]
 fn optional_rpc(
     chain_id: &ChainId,
     rpc: Option<String>,
@@ -672,6 +1184,52 @@ fn optional_rpc(
         (Some(url), None) => Ok(Some(RpcConfig::Literal(single_rpc(&url)?))),
         (None, Some(env)) => Ok(Some(RpcConfig::Env(env))),
     }
+}
+
+/// TVM: at most one of `provider_base_url` / `rpc`. Omit = Toncenter default.
+#[cfg(feature = "tvm")]
+fn optional_tvm_url(
+    chain_id: &ChainId,
+    provider_base_url: Option<String>,
+    rpc: Option<String>,
+) -> Result<Option<Url>, Error> {
+    match (provider_base_url, rpc) {
+        (Some(_), Some(_)) => Err(Error::config(format!(
+            "[network.\"{chain_id}\"] accepts at most one of `provider_base_url` or `rpc`"
+        ))),
+        (None, None) => Ok(None),
+        (Some(url), None) | (None, Some(url)) => Ok(Some(parse_http_url(&url)?)),
+    }
+}
+
+/// Concordium: at most one of `grpc` / `grpc_env`. Omit = `default_grpc_https()`.
+#[cfg(feature = "concordium")]
+fn optional_grpc(
+    chain_id: &ChainId,
+    grpc: Option<String>,
+    grpc_env: Option<String>,
+) -> Result<Option<GrpcConfig>, Error> {
+    match (grpc, grpc_env) {
+        (Some(_), Some(_)) => Err(Error::config(format!(
+            "[network.\"{chain_id}\"] accepts at most one of `grpc` or `grpc_env`"
+        ))),
+        (None, None) => Ok(None),
+        (Some(endpoint), None) => Ok(Some(GrpcConfig::Literal(require_grpc_endpoint(
+            chain_id, &endpoint,
+        )?))),
+        (None, Some(env)) => Ok(Some(GrpcConfig::Env(env))),
+    }
+}
+
+#[cfg(feature = "concordium")]
+fn require_grpc_endpoint(chain_id: &ChainId, raw: &str) -> Result<String, Error> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(Error::config(format!(
+            "[network.\"{chain_id}\"] `grpc` must not be empty"
+        )));
+    }
+    Ok(trimmed.to_owned())
 }
 
 fn require_eip155_reference(chain_id: &ChainId) -> Result<(), Error> {
@@ -722,6 +1280,16 @@ const fn known_scheme_names(family: HostableFamily) -> &'static [&'static str] {
         HostableFamily::Hedera => &[ExactScheme::VALUE],
         #[cfg(feature = "avm")]
         HostableFamily::Avm => &[ExactScheme::VALUE],
+        #[cfg(feature = "aptos")]
+        HostableFamily::Aptos => &[ExactScheme::VALUE],
+        #[cfg(feature = "keeta")]
+        HostableFamily::Keeta => &[ExactScheme::VALUE],
+        #[cfg(feature = "tvm")]
+        HostableFamily::Tvm => &[ExactScheme::VALUE],
+        #[cfg(feature = "stellar")]
+        HostableFamily::Stellar => &[ExactScheme::VALUE],
+        #[cfg(feature = "concordium")]
+        HostableFamily::Concordium => &[ExactScheme::VALUE],
     }
 }
 
@@ -807,7 +1375,12 @@ pub(crate) fn resolve_rpc(
 }
 
 /// Look up an optional env-backed RPC. `None` stays the SDK default.
-#[cfg(any(feature = "near", feature = "xrpl"))]
+#[cfg(any(
+    feature = "near",
+    feature = "xrpl",
+    feature = "aptos",
+    feature = "stellar"
+))]
 pub(crate) fn resolve_optional_rpc(
     chain_id: &ChainId,
     rpc: Option<&RpcConfig>,
@@ -821,6 +1394,51 @@ pub(crate) fn resolve_optional_rpc(
         .first()
         .ok_or_else(|| Error::config(format!("[network.\"{chain_id}\"] has no RPC URL")))?;
     Ok(Some(url.url.as_str().to_owned()))
+}
+
+/// Look up `api_key_env` when set.
+#[cfg(feature = "tvm")]
+pub(crate) fn resolve_api_key(
+    chain_id: &ChainId,
+    api_key_env: Option<&str>,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<String>, Error> {
+    let Some(env) = api_key_env else {
+        return Ok(None);
+    };
+    let raw = lookup(env).ok_or_else(|| {
+        Error::config(format!(
+            "env var '{env}' not found for [network.\"{chain_id}\"] api_key_env"
+        ))
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(Error::config(format!(
+            "env var '{env}' is empty for [network.\"{chain_id}\"] api_key_env"
+        )));
+    }
+    Ok(Some(trimmed.to_owned()))
+}
+
+/// Look up optional Concordium gRPC. `None` stays `default_grpc_https()`.
+#[cfg(feature = "concordium")]
+pub(crate) fn resolve_optional_grpc(
+    chain_id: &ChainId,
+    grpc: Option<&GrpcConfig>,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<String>, Error> {
+    match grpc {
+        None => Ok(None),
+        Some(GrpcConfig::Literal(endpoint)) => Ok(Some(endpoint.clone())),
+        Some(GrpcConfig::Env(env)) => {
+            let raw = lookup(env).ok_or_else(|| {
+                Error::config(format!(
+                    "env var '{env}' not found for [network.\"{chain_id}\"] grpc_env"
+                ))
+            })?;
+            Ok(Some(require_grpc_endpoint(chain_id, &raw)?))
+        }
+    }
 }
 
 /// Look up `algod_token_env` when set.

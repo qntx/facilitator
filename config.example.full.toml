@@ -82,7 +82,8 @@ max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 # schemes = ["exact", "upto", "auth-capture", "batch-settlement"]
 
 # --- Other exact families (commented: not in the default image) ---
-# Rebuild with --features near,xrpl,hedera,avm. Casper is never hosted.
+# Rebuild with --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium.
+# Casper is never hosted.
 
 # [signer.near_relayer]
 # source = "env"
@@ -124,3 +125,75 @@ max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 # # algod_url = "https://testnet-api.algonode.cloud"
 # # algod_token_env = "ALGOD_TOKEN"   # independent of algod_url
 # # wait_rounds = 10
+
+# [signer.aptos_hot]
+# source = "file"
+# path = "/run/secrets/aptos.key"
+# encoding = "hex"                   # 32-byte Ed25519 private key
+#
+# [network."aptos:1"]
+# # rpc / rpc_env: at most one. Omit = SDK default fullnode.
+# # rpc = "https://fullnode.mainnet.aptoslabs.com/v1"
+# fee_payers = ["aptos_hot"]
+# schemes = ["exact"]
+# # sponsor_transactions = true      # provider default
+
+# [signer.keeta_hot]
+# source = "file"
+# path = "/run/secrets/keeta.key"
+# encoding = "base64"                # 32-byte ed25519 seed
+#
+# [network."keeta:1413829460"]        # testnet; mainnet keeta:21378
+# signer = "keeta_hot"
+# indices = [0]
+# schemes = ["exact"]
+# # no rpc / rpc_env — unknown fields
+
+# [signer.tvm_hot]
+# source = "file"
+# path = "/run/secrets/tvm.key"
+# encoding = "hex"                   # 32- or 64-byte Highload V3 key (hex or base64)
+#
+# [network."tvm:-3"]                 # testnet; mainnet tvm:-239
+# signer = "tvm_hot"
+# schemes = ["exact"]
+# # provider_base_url / rpc: at most one. Omit = Toncenter.
+# # rpc = "https://testnet.toncenter.com/api/v3"
+# # api_key_env = "TONCENTER_API_KEY"  # independent of the URL
+# # subwallet_id = 0x10ad             # default 4269
+# # timeout = 3600
+# # workchain = 0
+# # batch_flush_interval_seconds / batch_flush_size / confirmation_timeout_seconds
+# # are snake_case TOML mapped to TvmExactFacilitatorConfig (SDK type is camelCase).
+
+# [signer.stellar_hot]
+# source = "file"
+# path = "/run/secrets/stellar.key"
+# encoding = "utf8"                  # S + 55 base32
+#
+# [network."stellar:testnet"]
+# # rpc / rpc_env: at most one. Omit allowed on testnet. Pubnet requires one.
+# signers = ["stellar_hot"]
+# schemes = ["exact"]
+# # fee_bump = "stellar_hot"
+# # horizon_url = "https://horizon-testnet.stellar.org"
+# # max_transaction_fee_stroops = 50000
+#
+# [network."stellar:pubnet"]
+# rpc = "https://soroban.example"    # required: no public default
+# signers = ["stellar_hot"]
+# schemes = ["exact"]
+
+# [signer.ccd_hot]
+# source = "file"
+# path = "/run/secrets/ccd.key"
+# encoding = "hex"                   # 32-byte ed25519 seed
+#
+# [network."ccd:4221332d34e1694168c2a0c0b3fd0f27"]  # testnet genesis
+# # grpc / grpc_env: at most one. Omit = default_grpc_https().
+# # grpc = "https://grpc.testnet.concordium.com:20000"
+# signers = [{ address = "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp", signer = "ccd_hot" }]
+# schemes = ["exact"]
+# # require_finalization = true
+# # finalization_timeout = "60s"
+# # max_expiry_offset_seconds = 600

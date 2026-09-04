@@ -96,6 +96,8 @@ jobs:
           test -f "$dest/crates/r402-protocol/Cargo.toml"
           test -f "$dest/crates/r402-near/Cargo.toml"
           test -f "$dest/crates/r402-avm/Cargo.toml"
+          test -f "$dest/crates/r402-aptos/Cargo.toml"
+          test -f "$dest/crates/r402-concordium/Cargo.toml"
 
       # hedera-proto (r402-hedera) runs prost-build. ubuntu-latest ships
       # neither protoc nor google/protobuf/*.proto (wrappers.proto).
@@ -114,7 +116,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy families
-        run: cargo clippy --workspace --all-targets --features near,xrpl,hedera,avm -- -D warnings
+        run: cargo clippy --workspace --all-targets --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium -- -D warnings
 
       - name: Test families
-        run: cargo test --workspace --verbose --features near,xrpl,hedera,avm
+        run: cargo test --workspace --verbose --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium

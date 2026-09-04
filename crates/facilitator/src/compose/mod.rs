@@ -1,15 +1,25 @@
 //! Private `FacilitatorMap` dispatching by `SchemeSlug`.
 
+#[cfg(feature = "aptos")]
+mod aptos;
 #[cfg(feature = "avm")]
 mod avm;
+#[cfg(feature = "concordium")]
+mod concordium;
 #[cfg(feature = "evm")]
 mod evm;
 #[cfg(feature = "hedera")]
 mod hedera;
+#[cfg(feature = "keeta")]
+mod keeta;
 #[cfg(feature = "near")]
 mod near;
+#[cfg(feature = "stellar")]
+mod stellar;
 #[cfg(feature = "svm")]
 mod svm;
+#[cfg(feature = "tvm")]
+mod tvm;
 #[cfg(feature = "xrpl")]
 mod xrpl;
 
@@ -17,7 +27,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use compact_str::CompactString;
-#[cfg(any(feature = "evm", feature = "svm", feature = "hedera", feature = "avm"))]
+#[cfg(any(
+    feature = "evm",
+    feature = "svm",
+    feature = "hedera",
+    feature = "avm",
+    feature = "aptos",
+    feature = "keeta",
+    feature = "tvm",
+    feature = "stellar",
+    feature = "concordium"
+))]
 use r402_facilitator::SettlementCache;
 use r402_facilitator::{DynFacilitator, Facilitator};
 #[cfg(any(feature = "evm", feature = "svm"))]
@@ -122,14 +142,15 @@ impl Facilitator for FacilitatorMap {
 ///
 /// EVM exact/upto and SVM exact use `with_settlement_cache` as a constructor
 /// (never `try_new`) so they share the process
-/// [`r402_facilitator::SettlementCache`]. Hedera and AVM exact share that
-/// cache too. NEAR and XRPL use private cache types (one per process).
-/// SVM upto uses `new`, `with_storage`, and `with_pending_store` (no
-/// settlement-cache constructor; r402 0.19.1 has no rent-cleanup manager).
-/// Auth-capture uses `try_new(provider)` only. Batch-settlement uses
-/// `with_store` with a process-wide in-memory channel store. Path 2 is a
-/// startup error. A listed scheme without a constructor in this build is an
-/// error. The returned map is nonempty.
+/// [`r402_facilitator::SettlementCache`]. Hedera, AVM, Aptos, Keeta, TVM,
+/// Stellar, and Concordium exact share that cache too. NEAR and XRPL use
+/// private cache types (one per process). SVM upto uses `new`,
+/// `with_storage`, and `with_pending_store` (no settlement-cache constructor;
+/// r402 0.19.1 has no rent-cleanup manager). Auth-capture uses
+/// `try_new(provider)` only. Batch-settlement uses `with_store` with a
+/// process-wide in-memory channel store. Path 2 is a startup error. A listed
+/// scheme without a constructor in this build is an error. The returned map
+/// is nonempty.
 ///
 /// # Errors
 ///
@@ -140,7 +161,17 @@ pub async fn build(
     lookup: &(impl Fn(&str) -> Option<String> + Send + Sync),
 ) -> Result<FacilitatorMap, Error> {
     let mut map = FacilitatorMap::new();
-    #[cfg(any(feature = "evm", feature = "svm", feature = "hedera", feature = "avm"))]
+    #[cfg(any(
+        feature = "evm",
+        feature = "svm",
+        feature = "hedera",
+        feature = "avm",
+        feature = "aptos",
+        feature = "keeta",
+        feature = "tvm",
+        feature = "stellar",
+        feature = "concordium"
+    ))]
     let cache = SettlementCache::new();
     #[cfg(any(feature = "evm", feature = "svm"))]
     let pending: Arc<dyn PendingSettlementStore> = Arc::new(InMemoryPendingSettlementStore::new());
@@ -158,7 +189,15 @@ pub async fn build(
     let xrpl_cache = r402_xrpl::exact::facilitator::XrplSettlementCache::new();
     #[cfg(all(
         any(feature = "evm", feature = "svm"),
-        not(any(feature = "hedera", feature = "avm"))
+        not(any(
+            feature = "hedera",
+            feature = "avm",
+            feature = "aptos",
+            feature = "keeta",
+            feature = "tvm",
+            feature = "stellar",
+            feature = "concordium"
+        ))
     ))]
     drop(cache);
     #[cfg(any(feature = "evm", feature = "svm"))]
@@ -197,6 +236,26 @@ pub async fn build(
             Network::Avm(net) => {
                 avm::register(&mut map, net, config, lookup, &cache)?;
             }
+            #[cfg(feature = "aptos")]
+            Network::Aptos(net) => {
+                aptos::register(&mut map, net, config, lookup, &cache)?;
+            }
+            #[cfg(feature = "keeta")]
+            Network::Keeta(net) => {
+                keeta::register(&mut map, net, config, lookup, &cache)?;
+            }
+            #[cfg(feature = "tvm")]
+            Network::Tvm(net) => {
+                tvm::register(&mut map, net, config, lookup, &cache)?;
+            }
+            #[cfg(feature = "stellar")]
+            Network::Stellar(net) => {
+                stellar::register(&mut map, net, config, lookup, &cache)?;
+            }
+            #[cfg(feature = "concordium")]
+            Network::Concordium(net) => {
+                concordium::register(&mut map, net, config, lookup, &cache).await?;
+            }
         }
     }
     #[cfg(feature = "evm")]
@@ -211,7 +270,12 @@ pub async fn build(
     feature = "svm",
     feature = "near",
     feature = "hedera",
-    feature = "avm"
+    feature = "avm",
+    feature = "aptos",
+    feature = "keeta",
+    feature = "tvm",
+    feature = "stellar",
+    feature = "concordium"
 ))]
 pub(super) fn named_secret(
     config: &Config,

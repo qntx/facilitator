@@ -190,8 +190,7 @@ Tron is `experimental-tron` and is not in the default image.
 | `svm` | ✓ | Parse Solana tables and construct `exact` and `upto` |
 | `telemetry` | ✓ | Reserved for OTLP |
 | `metrics` | ✓ | Enables `r402-facilitator/metrics` |
-| `near` / `xrpl` / `hedera` / `avm` | | Host `exact` when the feature is on |
-| `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Compiled-out vs reserved family errors |
+| `near` / `xrpl` / `hedera` / `avm` / `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Host `exact` when the feature is on |
 | `experimental-tron` | | Experimental; not in the default image |
 
 `casper:*` is always a remote-client startup error. There is no `extra-casper` feature.

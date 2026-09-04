@@ -14,19 +14,40 @@ use std::str::FromStr;
 use family::{CASPER_UNHOSTABLE, FamilyStatus, classify};
 pub use http::{HttpAuth, HttpConfig, LogConfig, LogFormat};
 use literal::{reject_literals_and_obsolete, reject_obsolete_root};
+#[cfg(feature = "aptos")]
+pub use network::AptosNetwork;
 #[cfg(feature = "avm")]
 pub use network::AvmNetwork;
+#[cfg(feature = "concordium")]
+pub use network::ConcordiumAccount;
+#[cfg(feature = "keeta")]
+pub use network::KeetaNetwork;
 #[cfg(any(feature = "near", feature = "hedera"))]
 pub use network::NamedAccount;
 #[cfg(feature = "near")]
 pub use network::NearNetwork;
+#[cfg(feature = "stellar")]
+pub use network::StellarNetwork;
+#[cfg(feature = "tvm")]
+pub use network::TvmNetwork;
 #[cfg(feature = "xrpl")]
 pub use network::XrplNetwork;
 #[cfg(feature = "avm")]
 pub(crate) use network::resolve_algod_token;
-#[cfg(any(feature = "near", feature = "xrpl"))]
+#[cfg(feature = "tvm")]
+pub(crate) use network::resolve_api_key;
+#[cfg(feature = "concordium")]
+pub(crate) use network::resolve_optional_grpc;
+#[cfg(any(
+    feature = "near",
+    feature = "xrpl",
+    feature = "aptos",
+    feature = "stellar"
+))]
 pub(crate) use network::resolve_optional_rpc;
 pub(crate) use network::resolve_rpc;
+#[cfg(feature = "concordium")]
+pub use network::{ConcordiumNetwork, GrpcConfig};
 pub use network::{EvmNetwork, Network, RpcConfig, RpcEndpoint, SvmNetwork};
 #[cfg(feature = "hedera")]
 pub use network::{HederaAliasPolicy, HederaNetwork};
@@ -354,6 +375,24 @@ fn resolve_network_env(
         #[cfg(feature = "avm")]
         Network::Avm(net) => {
             let _ = resolve_algod_token(&net.chain_id, net.algod_token_env.as_deref(), lookup)?;
+        }
+        #[cfg(feature = "aptos")]
+        Network::Aptos(net) => {
+            let _ = resolve_optional_rpc(&net.chain_id, net.rpc.as_ref(), lookup)?;
+        }
+        #[cfg(feature = "keeta")]
+        Network::Keeta(_) => {}
+        #[cfg(feature = "tvm")]
+        Network::Tvm(net) => {
+            let _ = resolve_api_key(&net.chain_id, net.api_key_env.as_deref(), lookup)?;
+        }
+        #[cfg(feature = "stellar")]
+        Network::Stellar(net) => {
+            let _ = resolve_optional_rpc(&net.chain_id, net.rpc.as_ref(), lookup)?;
+        }
+        #[cfg(feature = "concordium")]
+        Network::Concordium(net) => {
+            let _ = resolve_optional_grpc(&net.chain_id, net.grpc.as_ref(), lookup)?;
         }
     }
     Ok(())

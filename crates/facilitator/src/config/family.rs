@@ -6,7 +6,12 @@
     feature = "near",
     feature = "xrpl",
     feature = "hedera",
-    feature = "avm"
+    feature = "avm",
+    feature = "aptos",
+    feature = "keeta",
+    feature = "tvm",
+    feature = "stellar",
+    feature = "concordium"
 ))]
 use r402_protocol::scheme::SchemeId;
 
@@ -56,6 +61,21 @@ pub(crate) enum HostableFamily {
     /// Algorand / AVM.
     #[cfg(feature = "avm")]
     Avm,
+    /// Aptos.
+    #[cfg(feature = "aptos")]
+    Aptos,
+    /// Keeta.
+    #[cfg(feature = "keeta")]
+    Keeta,
+    /// TON / TVM.
+    #[cfg(feature = "tvm")]
+    Tvm,
+    /// Stellar.
+    #[cfg(feature = "stellar")]
+    Stellar,
+    /// Concordium (`ccd`).
+    #[cfg(feature = "concordium")]
+    Concordium,
 }
 
 /// Namespace string for EIP-155, from the SDK when the `evm` feature is on.
@@ -146,6 +166,79 @@ fn algorand_namespace() -> &'static str {
     }
 }
 
+/// Namespace string for Aptos.
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "feature-on branch calls SchemeId::namespace, which is not const"
+)]
+fn aptos_namespace() -> &'static str {
+    #[cfg(feature = "aptos")]
+    {
+        r402_aptos::AptosExact.namespace()
+    }
+    #[cfg(not(feature = "aptos"))]
+    {
+        "aptos"
+    }
+}
+
+/// Namespace string for Keeta.
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "feature-on branch calls SchemeId::namespace, which is not const"
+)]
+fn keeta_namespace() -> &'static str {
+    #[cfg(feature = "keeta")]
+    {
+        r402_keeta::KeetaExact.namespace()
+    }
+    #[cfg(not(feature = "keeta"))]
+    {
+        "keeta"
+    }
+}
+
+/// Namespace string for TON (`tvm`, not `ton`).
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "feature-on branch calls SchemeId::namespace, which is not const"
+)]
+fn tvm_namespace() -> &'static str {
+    #[cfg(feature = "tvm")]
+    {
+        r402_tvm::TvmExact.namespace()
+    }
+    #[cfg(not(feature = "tvm"))]
+    {
+        "tvm"
+    }
+}
+
+/// Namespace string for Stellar.
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "feature-on branch calls SchemeId::namespace, which is not const"
+)]
+fn stellar_namespace() -> &'static str {
+    #[cfg(feature = "stellar")]
+    {
+        r402_stellar::StellarExact.namespace()
+    }
+    #[cfg(not(feature = "stellar"))]
+    {
+        "stellar"
+    }
+}
+
+/// Namespace string for Concordium (`ccd`).
+///
+/// `ConcordiumExact` is not `Copy` and `SchemeId::namespace` is `&str`, so the
+/// SDK call cannot be returned as `'static`. The hostable unit test pins this
+/// against `ConcordiumExact::new().namespace()`.
+const fn ccd_namespace() -> &'static str {
+    "ccd"
+}
+
 /// Cargo feature name for a known CAIP-2 namespace.
 #[must_use]
 pub(crate) fn family_feature(namespace: &str) -> Option<&'static str> {
@@ -167,12 +260,22 @@ pub(crate) fn family_feature(namespace: &str) -> Option<&'static str> {
     if namespace == algorand_namespace() {
         return Some("avm");
     }
+    if namespace == aptos_namespace() {
+        return Some("aptos");
+    }
+    if namespace == keeta_namespace() {
+        return Some("keeta");
+    }
+    if namespace == tvm_namespace() {
+        return Some("tvm");
+    }
+    if namespace == stellar_namespace() {
+        return Some("stellar");
+    }
+    if namespace == ccd_namespace() {
+        return Some("concordium");
+    }
     match namespace {
-        "aptos" => Some("aptos"),
-        "keeta" => Some("keeta"),
-        "tvm" => Some("tvm"),
-        "stellar" => Some("stellar"),
-        "ccd" => Some("concordium"),
         "tron" => Some("experimental-tron"),
         _ => None,
     }
@@ -234,6 +337,26 @@ pub(crate) fn classify(namespace: &str) -> FamilyStatus {
     #[cfg(feature = "avm")]
     if namespace == algorand_namespace() {
         return FamilyStatus::Hostable(HostableFamily::Avm);
+    }
+    #[cfg(feature = "aptos")]
+    if namespace == aptos_namespace() {
+        return FamilyStatus::Hostable(HostableFamily::Aptos);
+    }
+    #[cfg(feature = "keeta")]
+    if namespace == keeta_namespace() {
+        return FamilyStatus::Hostable(HostableFamily::Keeta);
+    }
+    #[cfg(feature = "tvm")]
+    if namespace == tvm_namespace() {
+        return FamilyStatus::Hostable(HostableFamily::Tvm);
+    }
+    #[cfg(feature = "stellar")]
+    if namespace == stellar_namespace() {
+        return FamilyStatus::Hostable(HostableFamily::Stellar);
+    }
+    #[cfg(feature = "concordium")]
+    if namespace == ccd_namespace() {
+        return FamilyStatus::Hostable(HostableFamily::Concordium);
     }
     FamilyStatus::Reserved { feature }
 }
@@ -346,13 +469,107 @@ mod tests {
         assert_eq!(algorand_namespace(), r402_avm::AlgorandExact.namespace());
     }
 
+    #[cfg(not(feature = "aptos"))]
     #[test]
-    fn aptos_compiled_out_or_reserved() {
-        match classify("aptos") {
-            FamilyStatus::CompiledOut { feature } | FamilyStatus::Reserved { feature } => {
-                assert_eq!(feature, "aptos", "feature name");
+    fn aptos_compiled_out() {
+        assert_eq!(
+            classify("aptos"),
+            FamilyStatus::CompiledOut { feature: "aptos" }
+        );
+    }
+
+    #[cfg(feature = "aptos")]
+    #[test]
+    fn aptos_hostable() {
+        assert_eq!(
+            classify("aptos"),
+            FamilyStatus::Hostable(HostableFamily::Aptos)
+        );
+        assert_eq!(aptos_namespace(), r402_aptos::AptosExact.namespace());
+    }
+
+    #[cfg(not(feature = "keeta"))]
+    #[test]
+    fn keeta_compiled_out() {
+        assert_eq!(
+            classify("keeta"),
+            FamilyStatus::CompiledOut { feature: "keeta" }
+        );
+    }
+
+    #[cfg(feature = "keeta")]
+    #[test]
+    fn keeta_hostable() {
+        assert_eq!(
+            classify("keeta"),
+            FamilyStatus::Hostable(HostableFamily::Keeta)
+        );
+        assert_eq!(keeta_namespace(), r402_keeta::KeetaExact.namespace());
+    }
+
+    #[cfg(not(feature = "tvm"))]
+    #[test]
+    fn tvm_compiled_out() {
+        assert_eq!(
+            classify("tvm"),
+            FamilyStatus::CompiledOut { feature: "tvm" }
+        );
+        assert_eq!(
+            classify("ton"),
+            FamilyStatus::Unknown,
+            "TVM namespace is tvm, not ton"
+        );
+    }
+
+    #[cfg(feature = "tvm")]
+    #[test]
+    fn tvm_hostable() {
+        assert_eq!(classify("tvm"), FamilyStatus::Hostable(HostableFamily::Tvm));
+        assert_eq!(tvm_namespace(), r402_tvm::TvmExact.namespace());
+        assert_eq!(tvm_namespace(), "tvm", "not ton");
+        assert_eq!(classify("ton"), FamilyStatus::Unknown);
+    }
+
+    #[cfg(not(feature = "stellar"))]
+    #[test]
+    fn stellar_compiled_out() {
+        assert_eq!(
+            classify("stellar"),
+            FamilyStatus::CompiledOut { feature: "stellar" }
+        );
+    }
+
+    #[cfg(feature = "stellar")]
+    #[test]
+    fn stellar_hostable() {
+        assert_eq!(
+            classify("stellar"),
+            FamilyStatus::Hostable(HostableFamily::Stellar)
+        );
+        assert_eq!(stellar_namespace(), r402_stellar::StellarExact.namespace());
+    }
+
+    #[cfg(not(feature = "concordium"))]
+    #[test]
+    fn ccd_compiled_out() {
+        assert_eq!(
+            classify("ccd"),
+            FamilyStatus::CompiledOut {
+                feature: "concordium"
             }
-            other => panic!("expected compiled-out or reserved, got {other:?}"),
-        }
+        );
+    }
+
+    #[cfg(feature = "concordium")]
+    #[test]
+    fn ccd_hostable() {
+        assert_eq!(
+            classify("ccd"),
+            FamilyStatus::Hostable(HostableFamily::Concordium)
+        );
+        assert_eq!(
+            ccd_namespace(),
+            r402_concordium::ConcordiumExact::new().namespace()
+        );
     }
 }
