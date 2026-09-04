@@ -1,4 +1,4 @@
-# config.example.full.toml — EVM exact+upto plus SVM exact (this build
+# config.example.full.toml — EVM exact+upto plus SVM exact+upto (this build
 # constructs both). `facilitator init` writes config.example.toml (EVM only).
 #
 # Secrets: env or file. Literals for private keys are a startup error.
@@ -37,7 +37,7 @@ signers = ["evm_hot"]
 schemes = ["exact", "upto"]
 receipt_timeout_secs = 20
 
-# --- SVM exact (CU limits on the network table, not [scheme.svm.exact]) ---
+# --- SVM exact + upto (shared SolanaChainProvider; CU limits on the network table) ---
 [signer.svm_fee]
 source = "file"
 path = "/run/secrets/solana.key"
@@ -63,13 +63,16 @@ max_channel_lifetime_secs = 3600
 # max_required_signatures
 # compute_unit_price_micro_lamports
 # settle_compute_unit_limit
+# v1 is one replica: InMemoryChannelStorage is process-local. r402 0.19.1
+# does not expose a rent-cleanup manager; restart drops the channel index
+# and Distributed-channel rent is not reclaimed. verify/settle still run.
 
 [network."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
 rpc = "https://api.devnet.solana.com"
 # rpc_env = "SOLANA_RPC_URL"         # mutually exclusive with `rpc`
 # pubsub = "wss://api.devnet.solana.com"
 fee_payer = "svm_fee"
-schemes = ["exact"]
+schemes = ["exact", "upto"]
 max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 # max_compute_unit_price omitted → SDK SOLANA_MAX_COMPUTE_UNIT_PRICE_MICROLAMPORTS (5_000_000)
 
