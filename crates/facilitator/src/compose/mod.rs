@@ -1,17 +1,27 @@
 //! Private `FacilitatorMap` dispatching by `SchemeSlug`.
 
+#[cfg(feature = "avm")]
+mod avm;
 #[cfg(feature = "evm")]
 mod evm;
+#[cfg(feature = "hedera")]
+mod hedera;
+#[cfg(feature = "near")]
+mod near;
 #[cfg(feature = "svm")]
 mod svm;
+#[cfg(feature = "xrpl")]
+mod xrpl;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use compact_str::CompactString;
+#[cfg(any(feature = "evm", feature = "svm", feature = "hedera", feature = "avm"))]
+use r402_facilitator::SettlementCache;
 use r402_facilitator::{DynFacilitator, Facilitator};
 #[cfg(any(feature = "evm", feature = "svm"))]
-use r402_facilitator::{InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache};
+use r402_facilitator::{InMemoryPendingSettlementStore, PendingSettlementStore};
 use r402_protocol::ChainId;
 use r402_protocol::error::{FacilitatorError, VerificationError};
 use r402_protocol::payment::{
@@ -112,12 +122,14 @@ impl Facilitator for FacilitatorMap {
 ///
 /// EVM exact/upto and SVM exact use `with_settlement_cache` as a constructor
 /// (never `try_new`) so they share the process
-/// [`r402_facilitator::SettlementCache`]. SVM upto uses `new`, `with_storage`,
-/// and `with_pending_store` (no settlement-cache constructor; r402 0.19.1 has
-/// no rent-cleanup manager). Auth-capture uses `try_new(provider)` only.
-/// Batch-settlement uses `with_store` with a process-wide in-memory channel
-/// store. Path 2 is a startup error. A listed scheme without a constructor in
-/// this build is an error. The returned map is nonempty.
+/// [`r402_facilitator::SettlementCache`]. Hedera and AVM exact share that
+/// cache too. NEAR and XRPL use private cache types (one per process).
+/// SVM upto uses `new`, `with_storage`, and `with_pending_store` (no
+/// settlement-cache constructor; r402 0.19.1 has no rent-cleanup manager).
+/// Auth-capture uses `try_new(provider)` only. Batch-settlement uses
+/// `with_store` with a process-wide in-memory channel store. Path 2 is a
+/// startup error. A listed scheme without a constructor in this build is an
+/// error. The returned map is nonempty.
 ///
 /// # Errors
 ///
@@ -128,7 +140,7 @@ pub async fn build(
     lookup: &(impl Fn(&str) -> Option<String> + Send + Sync),
 ) -> Result<FacilitatorMap, Error> {
     let mut map = FacilitatorMap::new();
-    #[cfg(any(feature = "evm", feature = "svm"))]
+    #[cfg(any(feature = "evm", feature = "svm", feature = "hedera", feature = "avm"))]
     let cache = SettlementCache::new();
     #[cfg(any(feature = "evm", feature = "svm"))]
     let pending: Arc<dyn PendingSettlementStore> = Arc::new(InMemoryPendingSettlementStore::new());
@@ -140,8 +152,17 @@ pub async fn build(
         cache.clone(),
         Arc::clone(&pending),
     );
+    #[cfg(feature = "near")]
+    let near_cache = r402_near::exact::facilitator::SettlementCache::new();
+    #[cfg(feature = "xrpl")]
+    let xrpl_cache = r402_xrpl::exact::facilitator::XrplSettlementCache::new();
+    #[cfg(all(
+        any(feature = "evm", feature = "svm"),
+        not(any(feature = "hedera", feature = "avm"))
+    ))]
+    drop(cache);
     #[cfg(any(feature = "evm", feature = "svm"))]
-    drop((cache, pending));
+    drop(pending);
     for network in &config.networks {
         match network {
             Network::Evm(net) => {
@@ -160,6 +181,22 @@ pub async fn build(
                 #[cfg(not(feature = "svm"))]
                 reject_unconstructed(&net.chain_id, &net.schemes)?;
             }
+            #[cfg(feature = "near")]
+            Network::Near(net) => {
+                near::register(&mut map, net, config, lookup, &near_cache)?;
+            }
+            #[cfg(feature = "xrpl")]
+            Network::Xrpl(net) => {
+                xrpl::register(&mut map, net, lookup, &xrpl_cache)?;
+            }
+            #[cfg(feature = "hedera")]
+            Network::Hedera(net) => {
+                hedera::register(&mut map, net, config, lookup, &cache)?;
+            }
+            #[cfg(feature = "avm")]
+            Network::Avm(net) => {
+                avm::register(&mut map, net, config, lookup, &cache)?;
+            }
         }
     }
     #[cfg(feature = "evm")]
@@ -169,7 +206,13 @@ pub async fn build(
 }
 
 /// Resolve a named `[signer.*]` through `lookup`.
-#[cfg(any(feature = "evm", feature = "svm"))]
+#[cfg(any(
+    feature = "evm",
+    feature = "svm",
+    feature = "near",
+    feature = "hedera",
+    feature = "avm"
+))]
 pub(super) fn named_secret(
     config: &Config,
     name: &str,

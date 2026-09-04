@@ -80,6 +80,47 @@ max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 # batch-settlement uses a process-local MemoryChannelStore (one replica).
 # schemes = ["exact", "upto", "auth-capture"]
 # schemes = ["exact", "upto", "auth-capture", "batch-settlement"]
+
+# --- Other exact families (commented: not in the default image) ---
+# Rebuild with --features near,xrpl,hedera,avm. Casper is never hosted.
+
+# [signer.near_relayer]
+# source = "env"
+# env = "FACILITATOR_NEAR_KEY"       # ed25519:… / secp256k1:… ; encoding = "utf8" for files
+#
 # [network."near:testnet"]
+# # rpc / rpc_env: at most one. Omit = FastNEAR.
+# # rpc = "https://rpc.testnet.fastnear.com"
 # relayers = [{ account_id = "relayer.testnet", signer = "near_relayer" }]
 # schemes = ["exact"]
+# # max_sponsored_gas = 100000000000000
+
+# [network."xrpl:1"]
+# # rpc / rpc_env: at most one. Omit = SDK default on mainnet/testnet/devnet.
+# # No signers / fee_payer: XRPL has no hot wallet.
+# schemes = ["exact"]
+# # max_fee_drops = 10000
+
+# [signer.hedera_fee]
+# source = "file"
+# path = "/run/secrets/hedera.key"
+# encoding = "utf8"                  # DER hex or raw hex
+#
+# [network."hedera:testnet"]
+# fee_payers = [{ account_id = "0.0.5001", signer = "hedera_fee" }]
+# schemes = ["exact"]
+# # alias_policy = "reject"           # reject | allow
+# # mirror_url = "https://testnet.mirrornode.hedera.com"
+# # node_url = "0.testnet.hedera.com:50211"  # gRPC host:port, not https
+
+# [signer.algo_hot]
+# source = "file"
+# path = "/run/secrets/algorand.key"
+# encoding = "base64"                # 32-byte ed25519 seed
+#
+# [network."algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe"]  # testnet truncated genesis
+# signers = ["algo_hot"]
+# schemes = ["exact"]
+# # algod_url = "https://testnet-api.algonode.cloud"
+# # algod_token_env = "ALGOD_TOKEN"   # independent of algod_url
+# # wait_rounds = 10
