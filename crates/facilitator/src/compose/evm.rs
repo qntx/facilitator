@@ -1,4 +1,4 @@
-//! EIP-155 provider + exact/upto facilitator wiring.
+//! EIP-155 provider + exact/upto/auth-capture facilitator wiring.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use alloy_primitives::Address;
 use alloy_signer_local::PrivateKeySigner;
 use compact_str::CompactString;
 use r402_evm::chain::{Eip155ChainProvider, Eip155ChainReference};
-use r402_evm::{Eip155ExactFacilitator, Eip155UptoFacilitator};
+use r402_evm::{Eip155AuthCaptureFacilitator, Eip155ExactFacilitator, Eip155UptoFacilitator};
 use r402_extensions::{
     BUILDER_CODE, BuilderCodeFacilitatorConfig, BuilderCodeFacilitatorExtension,
     ERC20_APPROVAL_GAS_SPONSORING_KEY,
@@ -16,7 +16,7 @@ use r402_extensions::{
 use r402_facilitator::{
     DynFacilitator, InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache,
 };
-use r402_protocol::{ExactScheme, UptoScheme, scheme::SchemeSlug};
+use r402_protocol::{AuthCaptureScheme, ExactScheme, UptoScheme, scheme::SchemeSlug};
 use url::Url;
 
 use super::{FacilitatorMap, scheme_not_enabled};
@@ -25,7 +25,7 @@ use crate::config::{
 };
 use crate::error::Error;
 
-/// Process-wide EVM exact/upto construction state.
+/// Process-wide EVM exact/upto/auth-capture construction state.
 pub(super) struct Prepare {
     cache: SettlementCache,
     pending: Arc<dyn PendingSettlementStore>,
@@ -65,6 +65,7 @@ impl Prepare {
             match name.as_str() {
                 ExactScheme::VALUE => self.register_exact(map, &provider, network)?,
                 UptoScheme::VALUE => self.register_upto(map, &provider, network)?,
+                AuthCaptureScheme::VALUE => register_auth_capture(map, &provider, network)?,
                 _ => return Err(scheme_not_enabled(name, &network.chain_id)),
             }
         }
@@ -119,6 +120,30 @@ impl Prepare {
         }
         insert_scheme(map, network, UptoScheme::VALUE, Arc::new(facilitator))
     }
+}
+
+fn register_auth_capture(
+    map: &mut FacilitatorMap,
+    provider: &Arc<Eip155ChainProvider>,
+    network: &EvmNetwork,
+) -> Result<(), Error> {
+    // Auth-capture is try_new(provider) only: no settlement cache, no pending store.
+    let facilitator =
+        Eip155AuthCaptureFacilitator::try_new(Arc::clone(provider)).map_err(|err| {
+            Error::config_with(
+                format!(
+                    "failed to build Eip155AuthCaptureFacilitator for '{}'",
+                    network.chain_id
+                ),
+                err,
+            )
+        })?;
+    insert_scheme(
+        map,
+        network,
+        AuthCaptureScheme::VALUE,
+        Arc::new(facilitator),
+    )
 }
 
 fn insert_scheme(
