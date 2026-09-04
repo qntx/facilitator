@@ -7,18 +7,12 @@
     reason = "helpers are named; public API is documented"
 )]
 
-#[cfg(test)]
-use http_body_util as _;
-#[cfg(test)]
-use serde_json as _;
-#[cfg(test)]
-use tower as _;
-
 mod cli;
 mod compose;
 mod config;
 mod error;
 mod http;
+mod metrics;
 mod secrets;
 mod telemetry;
 
@@ -34,7 +28,8 @@ pub use config::{
     SvmSchemeConfig, SvmUptoConfig, load_config, parse_config_toml,
 };
 pub use error::Error;
-pub use http::{AppState, router};
+pub use http::{AppState, HttpTimeouts, router, router_with_timeouts};
+pub use metrics::{MetricsHandle, metrics_router};
 pub use secrets::{KeyEncoding, SecretSource};
 
 /// CLI entry: `init`, `validate`, or `serve`.

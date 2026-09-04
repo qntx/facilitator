@@ -1,4 +1,4 @@
-//! Console tracing subscriber.
+//! Console tracing subscriber. JSON by default.
 
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;

@@ -32,20 +32,24 @@ concordium = []
 experimental-tron = []
 extra-casper = []
 telemetry = []
-metrics = ["r402-facilitator/metrics"]
+metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "r402-facilitator/metrics"]
 
 [dependencies]
 axum = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
 humantime-serde = { workspace = true }
+metrics = { workspace = true, optional = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
 # Sibling repo: <parent>/r402 (CI clones qntx/r402@v0.19.1 to that path).
 r402-facilitator = { version = "0.19.1", path = "../../../r402/crates/r402-facilitator", default-features = false }
 r402-protocol = { version = "0.19.1", path = "../../../r402/crates/r402-protocol" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
+tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
@@ -56,6 +60,7 @@ r402-svm = { version = "0.19.1", path = "../../../r402/crates/r402-svm", default
 [dev-dependencies]
 http-body-util = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 tower = { workspace = true }
 
 [lints]
