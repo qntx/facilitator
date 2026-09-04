@@ -1,16 +1,13 @@
 name: Docker
 
+# Tag v* publishes to GHCR with SBOM + provenance attestation.
+# Org metadata-action flavor latest=auto: v2.0.0 also moves
+# ghcr.io/qntx/facilitator:latest and :2. Operators pin :2.0.0 or a digest.
+# pull_request and workflow_dispatch are build-only (push: false, no SBOM).
+# linux/amd64 only: Dockerfile runs native cargo; dual-arch would QEMU-compile r402.
+
 on:
   pull_request:
-    branches: [main]
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - config.example.toml
-      - compose.yaml
-      - compose.svm.yaml
-      - deploy/**
-      - .github/workflows/docker.yml
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -19,43 +16,28 @@ permissions:
   contents: read
 
 jobs:
-  sbom:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+  build:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    uses: qntx/workflows/.github/workflows/publish-container.yml@v2.0.0
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
+    with:
+      push: false
+      platforms: linux/amd64
+      timeout-minutes: 90
+      no-cache: false
 
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          load: true
-          tags: facilitator:sbom
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - uses: anchore/sbom-action@v0
-        with:
-          image: facilitator:sbom
-          format: cyclonedx-json
-          artifact-name: facilitator-cyclonedx.json
-          output-file: facilitator-cyclonedx.json
-
-  docker:
-    if: github.event_name != 'pull_request'
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     uses: qntx/workflows/.github/workflows/publish-container.yml@v2.0.0
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
-      no-cache: true
-      attest: false
+      push: true
+      attest: true
       platforms: linux/amd64
       timeout-minutes: 90
+      no-cache: true
