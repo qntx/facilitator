@@ -1,0 +1,46 @@
+# Build artifacts
+target/
+debug/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI / GitHub
+.github/
+
+# Environment and secrets
+.env
+.env.*
+config.toml
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compose / deploy (runtime only)
+compose.yaml
+compose.*.yaml
+deploy/
+
+# Image uses the rust:${RUST_VERSION} compiler, not rust-toolchain.toml.
+rust-toolchain.toml
+
+# Docs / misc
+*.md
+LICENSE*
+Justfile
+Makefile
+deny.toml
+clippy.toml
+rustfmt.toml
+.markdownlint.jsonc

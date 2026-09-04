@@ -1,0 +1,22 @@
+[Unit]
+Description=x402 facilitator
+Documentation=https://github.com/qntx/facilitator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=facilitator
+Group=facilitator
+Restart=on-failure
+EnvironmentFile=-/etc/facilitator/env
+ExecStart=/usr/bin/facilitator serve -c /etc/facilitator/config.toml
+TimeoutStopSec=35
+WorkingDirectory=/etc/facilitator
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
