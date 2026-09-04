@@ -1,4 +1,4 @@
-//! HTTP wire tests for the PR 1 skeleton (`GET /supported`).
+//! HTTP wire tests for `GET /supported`.
 
 #![allow(
     unused_crate_dependencies,
@@ -16,12 +16,18 @@
     reason = "idiomatic test-code patterns"
 )]
 
+use std::future::Future;
 use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use facilitator::{AppState, FacilitatorMap, router};
 use http_body_util::BodyExt;
+use r402_facilitator::Facilitator;
+use r402_protocol::error::FacilitatorError;
+use r402_protocol::payment::{
+    SettleRequest, SettleResponse, SupportedResponse, VerifyRequest, VerifyResponse,
+};
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -69,6 +75,46 @@ async fn get_root_is_404() {
         .unwrap();
     let (status, _) = send(app(), req).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "GET / removed");
+}
+
+struct FailingSupported;
+
+impl Facilitator for FailingSupported {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::aborted("test", "verify unused")))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::aborted("test", "settle unused")))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::aborted(
+            "test",
+            "supported aggregation failed",
+        )))
+    }
+}
+
+#[tokio::test]
+async fn supported_handler_error_is_500() {
+    let app = router(AppState::new(Arc::new(FailingSupported)));
+    let req = Request::builder()
+        .method("GET")
+        .uri("/supported")
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(app, req).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "aggregation err");
+    assert_eq!(json, Value::Null, "no synthesized empty kinds body");
 }
 
 #[tokio::test]

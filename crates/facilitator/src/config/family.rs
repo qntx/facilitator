@@ -81,6 +81,10 @@ pub(crate) fn family_feature(namespace: &str) -> Option<&'static str> {
 }
 
 /// Whether `feature` is compiled into this binary.
+#[allow(
+    clippy::match_like_matches_macro,
+    reason = "each arm is cfg!(feature); --all-features folds them to true"
+)]
 fn feature_enabled(feature: &str) -> bool {
     match feature {
         "evm" => cfg!(feature = "evm"),

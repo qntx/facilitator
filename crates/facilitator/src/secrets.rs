@@ -66,9 +66,19 @@ impl SecretSource {
     /// Missing environment variable, unreadable file, or empty contents.
     pub fn resolve(&self, lookup: &impl Fn(&str) -> Option<String>) -> Result<String, Error> {
         match self {
-            Self::Env { env } => lookup(env).ok_or_else(|| {
-                Error::secret(format!("env var '{env}' not found ({})", self.describe()))
-            }),
+            Self::Env { env } => {
+                let raw = lookup(env).ok_or_else(|| {
+                    Error::secret(format!("env var '{env}' not found ({})", self.describe()))
+                })?;
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(Error::secret(format!(
+                        "env var '{env}' is empty ({})",
+                        self.describe()
+                    )));
+                }
+                Ok(trimmed.to_owned())
+            }
             Self::File { path, encoding: _ } => {
                 warn_if_world_readable(path);
                 let raw = std::fs::read_to_string(path).map_err(|err| {

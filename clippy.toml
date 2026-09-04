@@ -83,7 +83,6 @@ disallowed-methods = [
     { path = "std::thread::sleep", reason = "In async code use tokio::time::sleep; in sync code justify with #[allow]" },
 ]
 
-# HashMap is the FacilitatorMap dispatch table (r402 0.19 deleted SchemeRegistry).
 # disallowed-types = [
 #     { path = "std::collections::HashMap", reason = "Use a hasher-explicit HashMap (e.g. ahash, foldhash, or std with BuildHasherDefault)", allow-invalid = true },
 #     { path = "std::collections::HashSet", reason = "Use a hasher-explicit HashSet (e.g. ahash, foldhash, or std with BuildHasherDefault)", allow-invalid = true },

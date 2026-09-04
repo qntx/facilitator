@@ -9,10 +9,58 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
-    uses: qntx/workflows/.github/workflows/ci-rust.yml@v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
-    with:
-      submodules: true
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # crates/facilitator path-deps ../../../r402 → $GITHUB_WORKSPACE/../../r402
+      # (/home/runner/work/r402). Clone into the workspace, then symlink there.
+      - name: Checkout r402 0.19.1
+        uses: actions/checkout@v5
+        with:
+          repository: qntx/r402
+          ref: v0.19.1
+          persist-credentials: false
+          path: .ci/r402
+
+      - name: Link r402 for path deps
+        run: |
+          set -euo pipefail
+          dest="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/r402"
+          ln -sfn "$GITHUB_WORKSPACE/.ci/r402" "$dest"
+          test -f "$dest/crates/r402-protocol/Cargo.toml"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo +nightly fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --verbose --all-features
+
+      - name: Test
+        run: cargo test --workspace --verbose --all-features

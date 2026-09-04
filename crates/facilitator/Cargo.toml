@@ -39,6 +39,7 @@ axum = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
 humantime-serde = { workspace = true }
+# Sibling repo: <parent>/r402 (CI clones qntx/r402@v0.19.1 to that path).
 r402-facilitator = { version = "0.19.1", path = "../../../r402/crates/r402-facilitator", default-features = false }
 r402-protocol = { version = "0.19.1", path = "../../../r402/crates/r402-protocol" }
 serde = { workspace = true }

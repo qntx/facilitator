@@ -11,7 +11,7 @@ use crate::config::Config;
 use crate::error::Error;
 use crate::http::{AppState, router};
 
-/// Example written by `init` (EVM `exact` only).
+/// Example written by `init`.
 pub(crate) const EXAMPLE_CONFIG: &str = include_str!("../../../config.example.toml");
 
 /// x402 facilitator process.
@@ -70,6 +70,7 @@ pub(crate) fn run_init(output: &std::path::Path, force: bool) -> Result<(), Erro
 
 /// Run `validate`.
 pub(crate) fn run_validate(config: &Config) -> Result<(), Error> {
+    crate::telemetry::init(&config.log);
     config.resolve_secrets(&|key| std::env::var(key).ok())?;
     config
         .write_summary(std::io::stdout())
@@ -77,10 +78,10 @@ pub(crate) fn run_validate(config: &Config) -> Result<(), Error> {
     Ok(())
 }
 
-/// Run `serve` with a stub (possibly empty) map.
+/// Bind the HTTP listener and serve protocol routes.
 pub(crate) async fn run_serve(config: &Config) -> Result<(), Error> {
-    config.resolve_secrets(&|key| std::env::var(key).ok())?;
     crate::telemetry::init(&config.log);
+    config.resolve_secrets(&|key| std::env::var(key).ok())?;
     let state = AppState::new(Arc::new(FacilitatorMap::new()));
     let app = router(state);
     let listener = tokio::net::TcpListener::bind(config.http.listen)

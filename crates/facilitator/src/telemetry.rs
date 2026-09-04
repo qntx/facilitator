@@ -1,4 +1,4 @@
-//! Console tracing. OTLP is a later PR.
+//! Console tracing subscriber.
 
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
