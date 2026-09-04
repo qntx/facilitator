@@ -1,0 +1,13 @@
+# One replica (in-memory SettlementCache). No HPA.
+# Replace facilitator-secrets.evm.key before the pod will serve.
+#
+#   kubectl apply -k deploy/k8s
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - servicemonitor.yaml
+  - networkpolicy.yaml

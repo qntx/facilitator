@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facilitator
+  labels:
+    app.kubernetes.io/name: facilitator
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  # In-memory SettlementCache / PendingSettlementStore. Do not scale. No HPA.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: facilitator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: facilitator
+        app.kubernetes.io/version: "2.0.0"
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 35
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: facilitator
+          image: ghcr.io/qntx/facilitator:2.0.0
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "-c", "/etc/facilitator/config.toml"]
+          env:
+            - name: FACILITATOR_HTTP_LISTEN
+              value: "0.0.0.0:8080"
+            - name: FACILITATOR_HTTP_METRICS_LISTEN
+              value: "0.0.0.0:9090"
+          ports:
+            - name: protocol
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: protocol
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: protocol
+              scheme: HTTP
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/facilitator
+              readOnly: true
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: facilitator
+            items:
+              - key: config.toml
+                path: config.toml
+        - name: secrets
+          secret:
+            secretName: facilitator-secrets
+            defaultMode: 384 # 0600; fsGroup 65532 so nonroot can read
+            items:
+              - key: evm.key
+                path: evm.key
