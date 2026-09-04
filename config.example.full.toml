@@ -73,7 +73,9 @@ schemes = ["exact"]
 max_compute_unit_limit = 200000      # SolanaChainProvider::new; default 200_000
 # max_compute_unit_price omitted → SDK SOLANA_MAX_COMPUTE_UNIT_PRICE_MICROLAMPORTS (5_000_000)
 
-# --- later PRs; listing them before constructors exist is a startup error ---
+# auth-capture is constructed when listed. batch-settlement is a later PR
+# (listing it is a startup error until then).
+# schemes = ["exact", "upto", "auth-capture"]
 # schemes = ["exact", "upto", "auth-capture", "batch-settlement"]
 # [network."near:testnet"]
 # relayers = [{ account_id = "relayer.testnet", signer = "near_relayer" }]
