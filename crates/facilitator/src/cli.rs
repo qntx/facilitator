@@ -15,8 +15,11 @@ use crate::error::Error;
 use crate::http::{AppState, HttpTimeouts, router_from_config};
 use crate::metrics;
 
-/// Example written by `init`.
-pub(crate) const EXAMPLE_CONFIG: &str = include_str!("../../../config.example.toml");
+/// Example written by `init`. Packaged with the crate (cargo publish tarball).
+pub(crate) const EXAMPLE_CONFIG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/config.example.toml"
+));
 
 /// x402 facilitator process.
 #[derive(Debug, Parser)]
