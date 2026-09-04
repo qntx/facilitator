@@ -13,11 +13,8 @@ use tokio::sync::watch;
 use crate::compose::FacilitatorMap;
 use crate::config::Config;
 use crate::error::Error;
-use crate::http::{AppState, router_from_config};
+use crate::http::{AppState, HttpTimeouts, router_from_config};
 use crate::metrics;
-
-/// Slack added to `settle_timeout` for SIGTERM drain.
-const DRAIN_SLACK: Duration = Duration::from_secs(5);
 
 /// Example written by `init`.
 pub(crate) const EXAMPLE_CONFIG: &str = include_str!("../../../config.example.toml");
@@ -92,14 +89,57 @@ pub(crate) async fn run_serve(config: &Config) -> Result<(), Error> {
     let lookup = |key: &str| std::env::var(key).ok();
     config.resolve_secrets(&lookup)?;
     let app = router_from_config(app_state(config, &lookup)?, &config.http)?;
-    let drain = config.http.settle_timeout.saturating_add(DRAIN_SLACK);
+    let drain = HttpTimeouts::from_http(&config.http).drain();
     let protocol = bind(config.http.listen).await?;
+    let metrics = bind_metrics(config.http.metrics_listen).await?;
+    log_listen(
+        config.http.listen,
+        metrics.as_ref().map(|(addr, ..)| *addr),
+        drain,
+    );
+    serve_bound(protocol, app, metrics, drain).await
+}
+
+fn log_listen(
+    protocol: std::net::SocketAddr,
+    metrics: Option<std::net::SocketAddr>,
+    drain: Duration,
+) {
     tracing::info!(
-        listen = %config.http.listen,
+        listen = %protocol,
         drain_secs = drain.as_secs(),
         "facilitator listening"
     );
-    serve_listeners(protocol, app, config.http.metrics_listen, drain).await
+    if let Some(addr) = metrics {
+        tracing::info!(listen = %addr, "metrics listening");
+    }
+}
+
+async fn serve_bound(
+    protocol: TcpListener,
+    app: Router,
+    metrics: Option<(std::net::SocketAddr, TcpListener, Router)>,
+    drain: Duration,
+) -> Result<(), Error> {
+    let shutdown = Shutdown::spawn();
+    match metrics {
+        Some((_, listener, metrics_app)) => {
+            serve_protocol_and_metrics(protocol, app, listener, metrics_app, shutdown, drain).await
+        }
+        None => serve_one(protocol, app, shutdown.rx, drain).await,
+    }
+}
+
+async fn bind_metrics(
+    addr: Option<std::net::SocketAddr>,
+) -> Result<Option<(std::net::SocketAddr, TcpListener, Router)>, Error> {
+    let Some(addr) = addr else {
+        return Ok(None);
+    };
+    let handle = metrics::install()?;
+    let app = metrics::metrics_router(handle);
+    let listener = bind(addr).await?;
+    Ok(Some((addr, listener, app)))
 }
 
 fn app_state(config: &Config, lookup: &impl Fn(&str) -> Option<String>) -> Result<AppState, Error> {
@@ -112,31 +152,6 @@ fn app_state(config: &Config, lookup: &impl Fn(&str) -> Option<String>) -> Resul
     Ok(state)
 }
 
-async fn serve_listeners(
-    protocol: TcpListener,
-    app: Router,
-    metrics_listen: Option<std::net::SocketAddr>,
-    drain: Duration,
-) -> Result<(), Error> {
-    let shutdown = Shutdown::spawn();
-    let Some(addr) = metrics_listen else {
-        return serve_one(protocol, app, shutdown.rx, drain).await;
-    };
-    let handle = metrics::install()?;
-    let metrics_app = metrics::metrics_router(handle);
-    let metrics_listener = bind(addr).await?;
-    tracing::info!(listen = %addr, "metrics listening");
-    serve_protocol_and_metrics(
-        protocol,
-        app,
-        metrics_listener,
-        metrics_app,
-        shutdown,
-        drain,
-    )
-    .await
-}
-
 async fn serve_protocol_and_metrics(
     protocol: TcpListener,
     app: Router,
@@ -147,10 +162,9 @@ async fn serve_protocol_and_metrics(
 ) -> Result<(), Error> {
     let protocol_srv = serve_one(protocol, app, shutdown.rx.clone(), drain);
     let metrics_srv = serve_one(metrics_listener, metrics_app, shutdown.rx, drain);
-    tokio::select! {
-        result = protocol_srv => result,
-        result = metrics_srv => result,
-    }
+    let (protocol_result, metrics_result) = tokio::join!(protocol_srv, metrics_srv);
+    protocol_result?;
+    metrics_result
 }
 
 async fn bind(addr: std::net::SocketAddr) -> Result<TcpListener, Error> {
@@ -183,20 +197,32 @@ async fn drain_after_signal(rx: &mut watch::Receiver<bool>, drain: Duration) {
     tokio::time::sleep(drain).await;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Shutdown {
+    tx: watch::Sender<bool>,
     rx: watch::Receiver<bool>,
 }
 
 impl Shutdown {
-    fn spawn() -> Self {
+    fn new() -> Self {
         let (tx, rx) = watch::channel(false);
+        Self { tx, rx }
+    }
+
+    fn spawn() -> Self {
+        let this = Self::new();
+        let tx = this.tx.clone();
         tokio::spawn(async move {
             wait_shutdown_signal().await;
             tracing::info!("shutdown signal received");
             tx.send(true).ok();
         });
-        Self { rx }
+        this
+    }
+
+    #[cfg(test)]
+    fn trigger(&self) {
+        self.tx.send(true).ok();
     }
 }
 
@@ -225,5 +251,78 @@ async fn wait_shutdown_signal() {
     #[cfg(not(unix))]
     {
         ctrl_c.await;
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "unit tests"
+)]
+mod tests {
+    use axum::routing::get;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+
+    async fn slow() -> &'static str {
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        "ok"
+    }
+
+    async fn connect_retry(addr: std::net::SocketAddr) -> tokio::net::TcpStream {
+        for _ in 0..50 {
+            if let Ok(stream) = tokio::net::TcpStream::connect(addr).await {
+                return stream;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("connect {addr}");
+    }
+
+    #[tokio::test]
+    async fn metrics_idle_shutdown_does_not_drop_protocol() {
+        let protocol_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("protocol bind");
+        let protocol_addr = protocol_listener.local_addr().expect("protocol addr");
+        let metrics_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("metrics bind");
+        let protocol_app = Router::new().route("/slow", get(slow));
+        let metrics_app = Router::new().route("/metrics", get(|| async { "" }));
+        let shutdown = Shutdown::new();
+        let server = tokio::spawn(serve_protocol_and_metrics(
+            protocol_listener,
+            protocol_app,
+            metrics_listener,
+            metrics_app,
+            shutdown.clone(),
+            Duration::from_secs(2),
+        ));
+        tokio::task::yield_now().await;
+
+        let client = tokio::spawn(async move {
+            let mut stream = connect_retry(protocol_addr).await;
+            stream
+                .write_all(b"GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .await
+                .expect("write");
+            let mut buf = Vec::new();
+            stream.read_to_end(&mut buf).await.expect("read");
+            buf
+        });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        shutdown.trigger();
+        let body = client.await.expect("client join");
+        let text = String::from_utf8_lossy(&body);
+        assert!(
+            text.contains("200"),
+            "in-flight protocol request must drain after metrics idles, got {text}"
+        );
+        assert!(text.contains("ok"), "body, got {text}");
+        server.await.expect("server join").expect("serve");
     }
 }

@@ -110,6 +110,15 @@ impl HttpTimeouts {
             ops: OPS_TIMEOUT,
         }
     }
+
+    /// SIGTERM drain: longest protocol timeout + 5s.
+    #[must_use]
+    pub fn drain(self) -> Duration {
+        self.verify
+            .max(self.settle)
+            .max(self.supported)
+            .saturating_add(Duration::from_secs(5))
+    }
 }
 
 /// Protocol + ops router with default timeouts. No CORS.
@@ -127,7 +136,7 @@ pub fn router_with_timeouts(state: AppState, timeouts: HttpTimeouts) -> Router {
 /// # Errors
 ///
 /// Invalid CORS origin header value.
-pub(crate) fn router_from_config(state: AppState, http: &HttpConfig) -> Result<Router, Error> {
+pub fn router_from_config(state: AppState, http: &HttpConfig) -> Result<Router, Error> {
     let cors = cors_layer(&http.cors_origins)?;
     Ok(build_router(
         state,
@@ -330,6 +339,20 @@ mod tests {
             response.status(),
             StatusCode::GATEWAY_TIMEOUT,
             "ops timeout"
+        );
+    }
+
+    #[test]
+    fn drain_covers_longest_protocol_timeout() {
+        let http = HttpConfig {
+            verify_timeout: Duration::from_mins(1),
+            settle_timeout: Duration::from_secs(30),
+            ..HttpConfig::default()
+        };
+        assert_eq!(
+            HttpTimeouts::from_http(&http).drain(),
+            Duration::from_secs(65),
+            "verify 60s + 5s slack"
         );
     }
 }
