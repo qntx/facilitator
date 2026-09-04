@@ -97,13 +97,15 @@ jobs:
           test -f "$dest/crates/r402-near/Cargo.toml"
           test -f "$dest/crates/r402-avm/Cargo.toml"
 
-      # hedera-proto (r402-hedera) runs prost-build; ubuntu-latest has no protoc.
+      # hedera-proto (r402-hedera) runs prost-build. ubuntu-latest ships
+      # neither protoc nor google/protobuf/*.proto (wrappers.proto).
       - name: Install protobuf compiler
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends protobuf-compiler
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
           protoc --version
+          test -f /usr/include/google/protobuf/wrappers.proto
 
       - uses: dtolnay/rust-toolchain@stable
         with:
