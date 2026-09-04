@@ -17,15 +17,13 @@ use r402_extensions::{
     BUILDER_CODE, BuilderCodeFacilitatorConfig, BuilderCodeFacilitatorExtension,
     ERC20_APPROVAL_GAS_SPONSORING_KEY,
 };
-use r402_facilitator::{
-    DynFacilitator, InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache,
-};
+use r402_facilitator::{DynFacilitator, PendingSettlementStore, SettlementCache};
 use r402_protocol::{
     AuthCaptureScheme, BatchSettlementScheme, ExactScheme, UptoScheme, scheme::SchemeSlug,
 };
 use url::Url;
 
-use super::{FacilitatorMap, scheme_not_enabled};
+use super::{FacilitatorMap, named_secret, scheme_not_enabled};
 use crate::config::{
     BuilderCodeToml, Config, EvmNetwork, EvmSchemeConfig, RpcEndpoint, resolve_rpc,
 };
@@ -47,13 +45,17 @@ struct Settings {
 }
 
 impl Prepare {
-    pub(super) fn new(config: &Config) -> Result<Self, Error> {
+    pub(super) fn new(
+        config: &Config,
+        cache: SettlementCache,
+        pending: Arc<dyn PendingSettlementStore>,
+    ) -> Result<Self, Error> {
         if lists_batch_settlement(config) {
             tracing::info!("batch-settlement requires a single replica");
         }
         Ok(Self {
-            cache: SettlementCache::new(),
-            pending: Arc::new(InMemoryPendingSettlementStore::new()),
+            cache,
+            pending,
             channel_store: Arc::new(MemoryChannelStore::new()),
             settings: Settings::from_config(&config.scheme.evm)?,
         })
@@ -277,25 +279,6 @@ fn wallet(
         wallet.register_signer(signer);
     }
     Ok(wallet)
-}
-
-fn named_secret(
-    config: &Config,
-    name: &str,
-    lookup: &impl Fn(&str) -> Option<String>,
-) -> Result<String, Error> {
-    let spec = config.signers.get(name).ok_or_else(|| {
-        Error::config(format!(
-            "[network.\"…\"] references unknown signer '{name}'"
-        ))
-    })?;
-    spec.resolve(lookup).map_err(|err| match err {
-        Error::Secret { context, source } => Error::Secret {
-            context: format!("signer '{name}': {context}"),
-            source,
-        },
-        other => other,
-    })
 }
 
 fn parse_evm_key(name: &str, secret: &str) -> Result<PrivateKeySigner, Error> {

@@ -2,12 +2,16 @@
 
 #[cfg(feature = "evm")]
 mod evm;
+#[cfg(feature = "svm")]
+mod svm;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use compact_str::CompactString;
 use r402_facilitator::{DynFacilitator, Facilitator};
+#[cfg(any(feature = "evm", feature = "svm"))]
+use r402_facilitator::{InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache};
 use r402_protocol::ChainId;
 use r402_protocol::error::{FacilitatorError, VerificationError};
 use r402_protocol::payment::{
@@ -15,6 +19,8 @@ use r402_protocol::payment::{
 };
 use r402_protocol::scheme::SchemeSlug;
 
+#[cfg(feature = "svm")]
+use crate::config::resolve_rpc;
 use crate::config::{Config, Network};
 use crate::error::Error;
 
@@ -104,24 +110,37 @@ impl Facilitator for FacilitatorMap {
 
 /// Construct in-process scheme handlers from `config`.
 ///
-/// EVM exact and upto use `with_settlement_cache` as a constructor (never
-/// `try_new`) so they share the process [`r402_facilitator::SettlementCache`].
-/// Auth-capture uses `try_new(provider)` only. Batch-settlement uses
-/// `with_store` with a process-wide in-memory channel store.
+/// EVM exact/upto and SVM exact use `with_settlement_cache` as a constructor
+/// (never `try_new`) so they share the process
+/// [`r402_facilitator::SettlementCache`]. Auth-capture uses `try_new(provider)`
+/// only. Batch-settlement uses `with_store` with a process-wide in-memory
+/// channel store. Path 2 smart-wallet verification is a startup error.
 /// A listed scheme without a constructor in this build is an error. The
 /// returned map is nonempty.
 ///
 /// # Errors
 ///
-/// Unresolvable secrets, invalid keys, provider construction failure, a listed
-/// scheme this build cannot construct, or an empty map.
-pub fn build(
+/// Unresolvable secrets, invalid keys, provider construction failure, Path 2
+/// enabled, a listed scheme this build cannot construct, or an empty map.
+pub async fn build(
     config: &Config,
-    lookup: &impl Fn(&str) -> Option<String>,
+    lookup: &(impl Fn(&str) -> Option<String> + Send + Sync),
 ) -> Result<FacilitatorMap, Error> {
     let mut map = FacilitatorMap::new();
+    #[cfg(any(feature = "evm", feature = "svm"))]
+    let cache = SettlementCache::new();
+    #[cfg(any(feature = "evm", feature = "svm"))]
+    let pending: Arc<dyn PendingSettlementStore> = Arc::new(InMemoryPendingSettlementStore::new());
     #[cfg(feature = "evm")]
-    let evm = evm::Prepare::new(config)?;
+    let evm = evm::Prepare::new(config, cache.clone(), Arc::clone(&pending))?;
+    #[cfg(feature = "svm")]
+    let svm = svm::Prepare::new(
+        config.scheme.svm.exact.clone(),
+        cache.clone(),
+        Arc::clone(&pending),
+    );
+    #[cfg(any(feature = "evm", feature = "svm"))]
+    drop((cache, pending));
     for network in &config.networks {
         match network {
             Network::Evm(net) => {
@@ -130,13 +149,43 @@ pub fn build(
                 #[cfg(not(feature = "evm"))]
                 reject_unconstructed(&net.chain_id, &net.schemes)?;
             }
-            Network::Svm(net) => reject_unconstructed(&net.chain_id, &net.schemes)?,
+            Network::Svm(net) => {
+                #[cfg(feature = "svm")]
+                {
+                    let endpoints = resolve_rpc(&net.chain_id, &net.rpc, lookup)?;
+                    let secret = named_secret(config, &net.fee_payer, lookup)?;
+                    svm.register(&mut map, net, &secret, endpoints).await?;
+                }
+                #[cfg(not(feature = "svm"))]
+                reject_unconstructed(&net.chain_id, &net.schemes)?;
+            }
         }
     }
     #[cfg(feature = "evm")]
     evm.finish(&mut map);
     require_nonempty(&map)?;
     Ok(map)
+}
+
+/// Resolve a named `[signer.*]` through `lookup`.
+#[cfg(any(feature = "evm", feature = "svm"))]
+pub(super) fn named_secret(
+    config: &Config,
+    name: &str,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<String, Error> {
+    let spec = config.signers.get(name).ok_or_else(|| {
+        Error::config(format!(
+            "[network.\"…\"] references unknown signer '{name}'"
+        ))
+    })?;
+    spec.resolve(lookup).map_err(|err| match err {
+        Error::Secret { context, source } => Error::Secret {
+            context: format!("signer '{name}': {context}"),
+            source,
+        },
+        other => other,
+    })
 }
 
 fn lookup_slug(slug: Option<SchemeSlug>) -> Result<SchemeSlug, FacilitatorError> {
@@ -223,6 +272,7 @@ fn extend_unique(existing: &mut Vec<CompactString>, addrs: Vec<CompactString>) {
     }
 }
 
+#[cfg(not(all(feature = "evm", feature = "svm")))]
 fn reject_unconstructed(chain_id: &ChainId, schemes: &[String]) -> Result<(), Error> {
     let Some(name) = schemes.first() else {
         return Err(Error::config(format!(

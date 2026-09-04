@@ -88,7 +88,15 @@ fn full_example_parses_as_documentation() {
         .networks
         .iter()
         .any(|net| net.chain_id().namespace() == "solana");
-    assert!(has_solana, "full example documents SVM");
+    assert!(has_solana, "full example includes SVM exact");
+    let svm = cfg.networks.iter().find_map(|net| match net {
+        Network::Svm(svm) => Some(svm),
+        Network::Evm(_) => None,
+    });
+    let svm = svm.expect("solana network");
+    assert_eq!(svm.schemes, ["exact".to_owned()], "SVM exact only");
+    assert_eq!(svm.max_compute_unit_limit, 200_000, "network CU limit");
+    assert_eq!(svm.max_compute_unit_price, None, "SDK default CU price");
     let evm_schemes = cfg.networks.iter().filter_map(|net| match net {
         Network::Evm(evm) => Some(evm.schemes.as_slice()),
         Network::Svm(_) => None,

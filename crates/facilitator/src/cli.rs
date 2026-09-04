@@ -77,7 +77,7 @@ pub(crate) async fn run_validate(config: &Config) -> Result<(), Error> {
     crate::telemetry::init(&config.log);
     let lookup = |key: &str| std::env::var(key).ok();
     config.resolve_secrets(&lookup)?;
-    let map = crate::compose::build(config, &lookup)?;
+    let map = crate::compose::build(config, &lookup).await?;
     let supported = r402_facilitator::Facilitator::supported(&map)
         .await
         .map_err(|err| Error::config_with("supported aggregation failed", err))?;
@@ -93,7 +93,7 @@ pub(crate) async fn run_serve(config: &Config) -> Result<(), Error> {
     crate::telemetry::init(&config.log);
     let lookup = |key: &str| std::env::var(key).ok();
     config.resolve_secrets(&lookup)?;
-    let app = router_from_config(app_state(config, &lookup)?, &config.http)?;
+    let app = router_from_config(app_state(config, &lookup).await?, &config.http)?;
     let drain = HttpTimeouts::from_http(&config.http).drain();
     let protocol = bind(config.http.listen).await?;
     let metrics = bind_metrics(config.http.metrics_listen).await?;
@@ -147,8 +147,11 @@ async fn bind_metrics(
     Ok(Some((addr, listener, app)))
 }
 
-fn app_state(config: &Config, lookup: &impl Fn(&str) -> Option<String>) -> Result<AppState, Error> {
-    let map = crate::compose::build(config, lookup)?;
+async fn app_state(
+    config: &Config,
+    lookup: &(impl Fn(&str) -> Option<String> + Send + Sync),
+) -> Result<AppState, Error> {
+    let map = crate::compose::build(config, lookup).await?;
     let mut state = AppState::new(Arc::new(map)).with_ready(true);
     if let Some(token) = config.resolve_http_auth(lookup)? {
         state = state.with_bearer(token);

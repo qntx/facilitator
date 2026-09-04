@@ -15,9 +15,9 @@
 
 Built on [r402](https://github.com/qntx/r402) **0.19.1**. This is facilitator 2.0: there is no compatibility with 1.0.0 config, r402 0.17, `/health`, Watchtower, or `fctl`. Replace `config.toml`; do not convert.
 
-This process parses the 2.0 config schema and constructs in-process EVM `exact`, `upto`, `auth-capture`, and `batch-settlement` facilitators on one `Arc` provider per network. Exact/upto share `SettlementCache`; upto has no pending store; auth-capture is `try_new(provider)` only; batch-settlement is `with_store` plus a process-wide `MemoryChannelStore`. Serves spec §7 HTTP plus `/healthz`, `/readyz`, and an optional metrics listen. `GET /supported` concatenates SDK kinds (upto `extra` is not stripped). Insufficient Permit2 allowance on verify is HTTP 412 from `Err(Permit2AllowanceRequired)`. A listed scheme without a constructor, or an empty constructed map, is a startup error. SVM constructors and deploy artifacts land in later commits.
+This process constructs in-process EVM `exact`/`upto`/`auth-capture`/`batch-settlement` and SVM `exact` facilitators (one provider `Arc` per network, process `SettlementCache`). Auth-capture is `try_new(provider)` only; batch-settlement is `with_store` plus process-local `MemoryChannelStore`; SVM Path 2 is a startup error. Serves spec §7 HTTP plus `/healthz`, `/readyz`, and an optional metrics listen. `GET /supported` concatenates SDK kinds (upto `extra` and SVM `extra.feePayer` are not stripped). Insufficient Permit2 allowance on verify is HTTP 412 from `Err(Permit2AllowanceRequired)`. A listed scheme without a constructor, or an empty constructed map, is a startup error. Deploy artifacts land in a later commit.
 
-v1 is a **single replica**. `SettlementCache`, `InMemoryPendingSettlementStore`, and `MemoryChannelStore` are process-local. Do not run multiple replicas. Enabling `batch-settlement` logs `batch-settlement requires a single replica` at startup.
+v1 is a **single replica**. In-memory stores are process-local. Enabling `batch-settlement` logs `batch-settlement requires a single replica` at startup.
 
 `crates/facilitator` path-depends on a **sibling** r402 checkout (`../../../r402/crates/...` from that crate). Clone both repos next to each other; CI clones `qntx/r402` at tag `v0.19.1` into the same layout.
 
@@ -70,7 +70,7 @@ Options:
 
 ## Configuration
 
-See [`config.example.toml`](config.example.toml) (EVM `schemes = ["exact", "upto"]`) and [`config.example.full.toml`](config.example.full.toml) (SVM tables as documentation).
+See [`config.example.toml`](config.example.toml) (EVM `schemes = ["exact", "upto"]`) and [`config.example.full.toml`](config.example.full.toml) (same plus SVM `exact`).
 
 Named `[signer.*]` plus per-network references. Literal private keys, `settlement_mode`, `[signers]`, and `[[schemes]]` are startup errors.
 
@@ -81,7 +81,7 @@ Env overlay: `FACILITATOR_HTTP_LISTEN`, `FACILITATOR_HTTP_METRICS_LISTEN`, `FACI
 | Feature | Default | Description |
 | --- | --- | --- |
 | `evm` | ✓ | Parse EIP-155 tables and construct `exact`, `upto`, `auth-capture`, `batch-settlement` |
-| `svm` | ✓ | Parse Solana network tables (constructors later) |
+| `svm` | ✓ | Parse Solana tables and construct `exact` |
 | `telemetry` | ✓ | Reserved for OTLP |
 | `metrics` | ✓ | Enables `r402-facilitator/metrics` |
 | `near` / `xrpl` / `hedera` / `avm` / `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Compiled-out vs reserved family errors |
