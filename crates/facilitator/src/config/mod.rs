@@ -1,4 +1,4 @@
-//! TOML config schema for facilitator 2.0.
+//! TOML config schema.
 
 mod family;
 mod http;

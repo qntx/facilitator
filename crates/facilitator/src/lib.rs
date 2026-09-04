@@ -1,4 +1,4 @@
-//! x402 V2 facilitator HTTP process (r402 0.19).
+//! x402 V2 facilitator HTTP process.
 //!
 //! Composes in-process scheme facilitators and serves spec §7 routes.
 

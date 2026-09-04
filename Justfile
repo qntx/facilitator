@@ -42,7 +42,7 @@ clippy-fix:
         --allow-staged \
         -- -D warnings
 
-# Format facilitator only; rustfmt --all also formats path-dep r402.
+# Format facilitator only.
 fmt:
     cargo +nightly fmt --package facilitator
 

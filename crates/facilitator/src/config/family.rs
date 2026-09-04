@@ -16,11 +16,10 @@
 ))]
 use r402_protocol::scheme::SchemeId;
 
-/// Casper is a remote HTTP client in r402 0.19.1; never hosted.
-pub(crate) const CASPER_UNHOSTABLE: &str = "casper exact cannot be hosted: r402-casper 0.19.1 \
+/// Casper is a remote HTTP client; never hosted.
+pub(crate) const CASPER_UNHOSTABLE: &str = "casper exact cannot be hosted: r402-casper \
      CasperExactFacilitator is a remote HTTP client \
-     (crates/r402-casper/src/exact/facilitator/mod.rs try_new(transport)), \
-     not an on-chain facilitator";
+     (try_new(transport)), not an on-chain facilitator";
 
 /// Outcome of classifying a CAIP-2 namespace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

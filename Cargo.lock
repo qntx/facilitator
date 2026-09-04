@@ -3152,7 +3152,7 @@ dependencies = [
 
 [[package]]
 name = "facilitator"
-version = "2.0.0"
+version = "0.7.0"
 dependencies = [
  "alloy-network",
  "alloy-primitives",
@@ -6138,9 +6138,9 @@ checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
 
 [[package]]
 name = "portable-atomic-util"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618"
+checksum = "10ab3eb7f3becc3a1cbc4f2c6f20267996cfc1a6467a873763411b136a122715"
 dependencies = [
  "portable-atomic",
 ]
@@ -6528,7 +6528,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "r402-aptos"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e901e38d37bccb38d5800622572b23ed9ec7c06e398f982cb167c1394fdbd445"
 dependencies = [
  "aptos-sdk",
  "base64 0.23.1",
@@ -6544,7 +6546,9 @@ dependencies = [
 
 [[package]]
 name = "r402-avm"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4331b6f621097306964c2797f462163eca53fee89399fbbd885b0df57e272879"
 dependencies = [
  "base64 0.23.1",
  "compact_str",
@@ -6564,7 +6568,9 @@ dependencies = [
 
 [[package]]
 name = "r402-client"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57365132877f43d2e7de30fb37690d8ff9f599216dacfbd69c64294a63bc43df"
 dependencies = [
  "compact_str",
  "http 1.5.0",
@@ -6573,7 +6579,9 @@ dependencies = [
 
 [[package]]
 name = "r402-concordium"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7fad7f6d33713d00c6213363b75f9252c635479bfcbbd5d718ff22bdb20fcf5"
 dependencies = [
  "bs58 0.5.1",
  "compact_str",
@@ -6593,7 +6601,9 @@ dependencies = [
 
 [[package]]
 name = "r402-evm"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef9be187aaf1525bd4e487293805ef4170390cde97ec93c015919f89e923f274"
 dependencies = [
  "alloy-consensus",
  "alloy-contract",
@@ -6627,7 +6637,9 @@ dependencies = [
 
 [[package]]
 name = "r402-extensions"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b552727db1d4cbf65a074ecbb72d43e26b3cf5a1156ed55c1e6433f3d548326e"
 dependencies = [
  "compact_str",
  "r402-client",
@@ -6638,7 +6650,9 @@ dependencies = [
 
 [[package]]
 name = "r402-facilitator"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b15e800c9982cea76c9db113372b8111a40eca64857a6f1cdda208f4e7b8ef2"
 dependencies = [
  "compact_str",
  "metrics",
@@ -6648,7 +6662,9 @@ dependencies = [
 
 [[package]]
 name = "r402-hedera"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc37c3a0d4767aa5ee52f51850d2287ee50fa03be7ac4dbb0cb5fdcdab8e2672"
 dependencies = [
  "base64 0.23.1",
  "compact_str",
@@ -6666,7 +6682,9 @@ dependencies = [
 
 [[package]]
 name = "r402-keeta"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1df72664c156f8df69297b9a0363afadfd185c5de426b4d4e243ccaff5b5fa1"
 dependencies = [
  "base64 0.23.1",
  "compact_str",
@@ -6686,7 +6704,9 @@ dependencies = [
 
 [[package]]
 name = "r402-near"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89cde55503155ea1359ee85468fab49bececa471566ef80c2367d17db1aa5c20"
 dependencies = [
  "base64 0.23.1",
  "borsh",
@@ -6698,6 +6718,7 @@ dependencies = [
  "near-primitives",
  "r402-facilitator",
  "r402-protocol",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6708,7 +6729,9 @@ dependencies = [
 
 [[package]]
 name = "r402-protocol"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2b244a6e2781260cd3b21643fd4393de617630208a7f463fe36f4074f2be7b2"
 dependencies = [
  "base64 0.23.1",
  "compact_str",
@@ -6721,7 +6744,9 @@ dependencies = [
 
 [[package]]
 name = "r402-stellar"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "507de4e6ad13e12de2c04447b2b02f4b27153551f7827dd7d8bfe4ea8dff47be"
 dependencies = [
  "compact_str",
  "ed25519-dalek 3.0.0",
@@ -6741,7 +6766,9 @@ dependencies = [
 
 [[package]]
 name = "r402-svm"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34f12367e91c2bbf111c2300cb62985b982bc68c0367ad041265bd2016b0fd41"
 dependencies = [
  "base64 0.23.1",
  "bincode",
@@ -6774,7 +6801,9 @@ dependencies = [
 
 [[package]]
 name = "r402-tron"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c5b311bc590af32fa27310fdfab7ceee42e9827d0cec4a76f1ad62859d73793"
 dependencies = [
  "alloy-primitives",
  "alloy-signer",
@@ -6797,7 +6826,9 @@ dependencies = [
 
 [[package]]
 name = "r402-tvm"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a47be2b0469da720981772909ae2972474c304473514de9a621457e961d5dae8"
 dependencies = [
  "base64 0.23.1",
  "compact_str",
@@ -6821,7 +6852,9 @@ dependencies = [
 
 [[package]]
 name = "r402-xrpl"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ae8fb616f73cf66249c0131c621d30f3e374af3c7e5a770876bc63c3511be0b"
 dependencies = [
  "compact_str",
  "hex",
@@ -12050,9 +12083,9 @@ dependencies = [
 
 [[package]]
 name = "zstd-safe"
-version = "7.2.4"
+version = "7.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
 dependencies = [
  "zstd-sys",
 ]

@@ -1,15 +1,15 @@
 name: Docker
 
 # Tag v* publishes to GHCR with SBOM + provenance attestation.
-# metadata-action flavor latest=auto: v2.0.0 also moves
-# ghcr.io/qntx/facilitator:latest and :2. Operators pin :2.0.0 or a digest.
+# metadata-action flavor latest=auto: v0.7.0 also moves
+# ghcr.io/qntx/facilitator:latest and :0. Operators pin :0.7.0 or a digest.
 # pull_request and workflow_dispatch are build-only (push: false, no SBOM).
 # linux/amd64 only: Dockerfile runs native cargo; dual-arch would QEMU-compile r402.
 #
 # Inlined rather than qntx/workflows publish-container.yml@v2.0.0: that
 # callee's mutually exclusive job `if:` on `inputs.push` / `inputs.attest`
 # produces startup_failure (0 jobs) when this repo calls it from a
-# pull_request. Dockerfile clones r402 itself; no extra checkout.
+# pull_request.
 
 on:
   pull_request:

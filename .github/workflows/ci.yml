@@ -25,25 +25,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # crates/facilitator path-deps ../../../r402 → $GITHUB_WORKSPACE/../r402
-      # (/home/runner/work/facilitator/r402). actions/checkout cannot write
-      # outside GITHUB_WORKSPACE; clone into .ci/r402 and symlink there.
-      - name: Checkout r402 0.19.1
-        uses: actions/checkout@v5
-        with:
-          repository: qntx/r402
-          ref: v0.19.1
-          persist-credentials: false
-          path: .ci/r402
-
-      - name: Link r402 sibling for path deps
-        run: |
-          set -euo pipefail
-          dest="$(cd "$GITHUB_WORKSPACE/.." && pwd)/r402"
-          ln -sfn "$GITHUB_WORKSPACE/.ci/r402" "$dest"
-          test -f "$dest/crates/r402-protocol/Cargo.toml"
-          test -f "$dest/crates/r402-evm/Cargo.toml"
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -54,19 +35,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # --package facilitator: rustfmt --all also formats path-dep r402.
-      # nightly: rustfmt.toml group_imports is nightly-only.
       - name: Format
         run: cargo +nightly fmt --package facilitator --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Build
-        run: cargo build --workspace --verbose
+        run: cargo build --workspace --locked --verbose
 
       - name: Test
-        run: cargo test --workspace --verbose
+        run: cargo test --workspace --locked --verbose
 
   ci-families:
     runs-on: ubuntu-latest
@@ -80,28 +59,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout r402 0.19.1
-        uses: actions/checkout@v5
-        with:
-          repository: qntx/r402
-          ref: v0.19.1
-          persist-credentials: false
-          path: .ci/r402
-
-      - name: Link r402 sibling for path deps
-        run: |
-          set -euo pipefail
-          dest="$(cd "$GITHUB_WORKSPACE/.." && pwd)/r402"
-          ln -sfn "$GITHUB_WORKSPACE/.ci/r402" "$dest"
-          test -f "$dest/crates/r402-protocol/Cargo.toml"
-          test -f "$dest/crates/r402-near/Cargo.toml"
-          test -f "$dest/crates/r402-avm/Cargo.toml"
-          test -f "$dest/crates/r402-aptos/Cargo.toml"
-          test -f "$dest/crates/r402-concordium/Cargo.toml"
-          test -f "$dest/crates/r402-tron/Cargo.toml"
-
-      # hedera-proto (r402-hedera) runs prost-build. ubuntu-latest ships
-      # neither protoc nor google/protobuf/*.proto (wrappers.proto).
       - name: Install protobuf compiler
         run: |
           set -euo pipefail
@@ -117,7 +74,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy families
-        run: cargo clippy --workspace --all-targets --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium,experimental-tron -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium,experimental-tron -- -D warnings
 
       - name: Test families
-        run: cargo test --workspace --verbose --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium,experimental-tron
+        run: cargo test --workspace --locked --verbose --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium,experimental-tron
