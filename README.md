@@ -80,9 +80,11 @@ Env overlay: `FACILITATOR_HTTP_LISTEN`, `FACILITATOR_HTTP_METRICS_LISTEN`, `FACI
 
 Image tag: `ghcr.io/qntx/facilitator:2.0.0`. Default features are `evm` + `svm`. Runtime is [`gcr.io/distroless/cc-debian12:nonroot`](https://github.com/GoogleContainerTools/distroless) (CA certs, no shell, no curl). There is no image `HEALTHCHECK`; probe `GET /healthz` and `GET /readyz`.
 
-One replica. `SettlementCache` is in-memory. Do not scale. Pin an explicit tag; do not use Watchtower or `fctl`.
+v1 is **one replica**. [`deploy/k8s/deployment.yaml`](deploy/k8s/deployment.yaml) pins `replicas: 1` and `strategy: Recreate`. Do not add HPA. `SettlementCache`, pending stores, and SVM upto channel index are process-local. Duplicate `/settle` across replicas is unsafe. Pin `:2.0.0` or a digest; do not use Watchtower or `fctl`. Tag `v*` also moves `:latest` and `:2` (org `docker/metadata-action` flavor `latest=auto`).
 
-Drain is `settle_timeout + 5s` (default 35s): compose `stop_grace_period: 35s`, systemd `TimeoutStopSec=35`.
+Drain is `settle_timeout + 5s` (default 35s): compose `stop_grace_period: 35s`, systemd `TimeoutStopSec=35`, k8s `terminationGracePeriodSeconds: 35`.
+
+`FACILITATOR_EVM_KEY` is required for the example config. An empty key is a construct failure.
 
 ### Docker Compose (local)
 
@@ -128,6 +130,23 @@ sudo systemctl enable --now facilitator
 
 [`deploy/systemd/facilitator.service`](deploy/systemd/facilitator.service): `Type=simple`, `Restart=on-failure`, `EnvironmentFile=-/etc/facilitator/env`, `ExecStart=/usr/bin/facilitator serve -c /etc/facilitator/config.toml`, `TimeoutStopSec=35`.
 
+### Kubernetes
+
+[`deploy/k8s`](deploy/k8s): `replicas: 1`, `strategy: Recreate`, probes on protocol `/healthz` and `/readyz`, protocol Service 8080 only, headless metrics Service + ServiceMonitor on pod IP:9090.
+
+```bash
+# replace facilitator-secrets.evm.key first
+kubectl apply -k deploy/k8s
+```
+
+Default ConfigMap is EVM-only. SVM is opt-in (do not add the volume item until the Secret has the key — kubelet fails the mount):
+
+1. Put a base58 fee-payer in `facilitator-secrets` as `solana.key` (see [`deploy/k8s/secret.yaml`](deploy/k8s/secret.yaml)).
+2. Mount it: add `key: solana.key` / `path: solana.key` under the secrets volume `items` in [`deploy/k8s/deployment.yaml`](deploy/k8s/deployment.yaml).
+3. Copy SVM tables from [`config.example.full.toml`](config.example.full.toml) into the ConfigMap (`[signer.svm_fee]` `path = "/run/secrets/solana.key"`).
+
+Local equivalent: [`compose.svm.yaml`](compose.svm.yaml) with `FACILITATOR_CONFIG=./config.example.full.toml`.
+
 ### Image
 
 ```bash
@@ -135,6 +154,33 @@ docker build -t ghcr.io/qntx/facilitator:2.0.0 .
 ```
 
 The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to override) so the crate path deps resolve. CI publishes `ghcr.io/qntx/facilitator` on `v*` tags with buildx SBOM and provenance attestation. Pull requests and `workflow_dispatch` only prove the image builds (no push, no SBOM). metadata-action also moves `:latest` and `:2`; pin `:2.0.0` or a digest.
+
+### Runbook
+
+v1 ops model is one replica. `replicas: 1`, `strategy: Recreate`, no HPA. Duplicate `/settle` splits the in-memory `SettlementCache`. On listen the JSON log fields are `settlement_cache` (`"in-memory"`) and `pin_settle` (`true`).
+
+Alert on:
+
+| Signal | Meaning |
+| --- | --- |
+| `r402_facilitator_settle_total{result="failure"}` / `{result="error"}` | settle failed or transport/timeout |
+| HTTP `invalidReason` / `errorReason` `invalid_transaction_state` | Onchain reject; HTTP 200, not 502 |
+| `GET /readyz` 503 | empty constructed map / not ready |
+| process down / `GET /healthz` | liveness |
+
+Gas exhaustion is Onchain, not HTTP 502.
+
+Rotate keys by rewriting secret files (or the Secret) and restarting. Crash-only; no hot reload.
+
+Rollback is the previous **2.x** image plus matching config. Cannot roll to 1.0.0. 1.0.0 config will not parse (`deny_unknown_fields`). Replace `config.toml`; do not convert.
+
+Tag `v*` publishes `ghcr.io/qntx/facilitator:2.0.0`. Org metadata-action flavor `latest=auto` also moves `:latest` and `:2`. Pin `:2.0.0` or a digest after first publish. Do not run `:latest` under Watchtower.
+
+This crate path-depends on sibling `r402` (`../../../r402/crates/...` from `crates/facilitator`). Local builds need `qntx/r402` at tag `v0.19.1` next to this repo. The Docker builder clones that tag. The operator is not published to crates.io.
+
+Casper is unhostable: `r402-casper` 0.19.1 `CasperExactFacilitator` is a remote HTTP client, not an on-chain facilitator. Do not proxy `casper:*`. No Cargo feature hosts it.
+
+Tron is `experimental-tron` and is not in the default image.
 
 ## Feature Flags
 
@@ -146,7 +192,7 @@ The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to o
 | `metrics` | ✓ | Enables `r402-facilitator/metrics` |
 | `near` / `xrpl` / `hedera` / `avm` | | Host `exact` when the feature is on |
 | `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Compiled-out vs reserved family errors |
-| `experimental-tron` | | Rejected unless the feature is on |
+| `experimental-tron` | | Experimental; not in the default image |
 
 `casper:*` is always a remote-client startup error. There is no `extra-casper` feature.
 
