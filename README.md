@@ -157,14 +157,14 @@ The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to o
 
 ### Runbook
 
-v1 ops model is one replica. `replicas: 1`, `strategy: Recreate`, no HPA. Duplicate `/settle` splits the in-memory `SettlementCache`. On listen the process logs `settlement_cache=in-memory pin_settle=true`.
+v1 ops model is one replica. `replicas: 1`, `strategy: Recreate`, no HPA. Duplicate `/settle` splits the in-memory `SettlementCache`. On listen the JSON log fields are `settlement_cache` (`"in-memory"`) and `pin_settle` (`true`).
 
 Alert on:
 
 | Signal | Meaning |
 | --- | --- |
 | `r402_facilitator_settle_total{result="failure"}` / `{result="error"}` | settle failed or transport/timeout |
-| log `invalid_transaction_state` | Onchain reject; not HTTP 502 |
+| HTTP `invalidReason` / `errorReason` `invalid_transaction_state` | Onchain reject; HTTP 200, not 502 |
 | `GET /readyz` 503 | empty constructed map / not ready |
 | process down / `GET /healthz` | liveness |
 
@@ -178,7 +178,7 @@ Tag `v*` publishes `ghcr.io/qntx/facilitator:2.0.0`. Org metadata-action flavor 
 
 This crate path-depends on sibling `r402` (`../../../r402/crates/...` from `crates/facilitator`). Local builds need `qntx/r402` at tag `v0.19.1` next to this repo. The Docker builder clones that tag. The operator is not published to crates.io.
 
-Casper is unhostable: `r402-casper` 0.19.1 `CasperExactFacilitator` is a remote HTTP client, not an on-chain facilitator. Do not proxy `casper:*`. Do not rebuild with `--features extra-casper`.
+Casper is unhostable: `r402-casper` 0.19.1 `CasperExactFacilitator` is a remote HTTP client, not an on-chain facilitator. Do not proxy `casper:*`. No Cargo feature hosts it.
 
 Tron is `experimental-tron` and is not in the default image.
 
