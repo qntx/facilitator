@@ -1,0 +1,10 @@
+# SVM overlay on compose.yaml.
+#   FACILITATOR_CONFIG=./config.example.full.toml docker compose -f compose.yaml -f compose.svm.yaml up --build
+#
+# compose.yaml interpolates FACILITATOR_CONFIG for the config bind.
+# This file only adds the fee-payer key at /run/secrets/solana.key.
+
+services:
+  facilitator:
+    volumes:
+      - ${SVM_FEE_PAYER_KEY:-./solana.key}:/run/secrets/solana.key:ro

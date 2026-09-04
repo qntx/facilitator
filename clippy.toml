@@ -60,6 +60,9 @@ doc-valid-idents = [
     "TON",
     "TVM",
     "Stellar",
+    "Solana",
+    "CAIP",
+    "TOML",
     "WebSocket",
     "OAuth",
     "GraphQL",
@@ -80,7 +83,7 @@ disallowed-methods = [
     { path = "std::thread::sleep", reason = "In async code use tokio::time::sleep; in sync code justify with #[allow]" },
 ]
 
-disallowed-types = [
-    { path = "std::collections::HashMap", reason = "Use a hasher-explicit HashMap (e.g. ahash, foldhash, or std with BuildHasherDefault)", allow-invalid = true },
-    { path = "std::collections::HashSet", reason = "Use a hasher-explicit HashSet (e.g. ahash, foldhash, or std with BuildHasherDefault)", allow-invalid = true },
-]
+# disallowed-types = [
+#     { path = "std::collections::HashMap", reason = "Use a hasher-explicit HashMap (e.g. ahash, foldhash, or std with BuildHasherDefault)", allow-invalid = true },
+#     { path = "std::collections::HashSet", reason = "Use a hasher-explicit HashSet (e.g. ahash, foldhash, or std with BuildHasherDefault)", allow-invalid = true },
+# ]

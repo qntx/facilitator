@@ -1,17 +1,11 @@
 # Facilitator
 
 [![CI][ci-badge]][ci-url]
-[![Crates.io][crate-badge]][crate-url]
-[![Docker][docker-badge]][docker-url]
 [![License][license-badge]][license-url]
 [![Rust][rust-badge]][rust-url]
 
 [ci-badge]: https://github.com/qntx/facilitator/actions/workflows/ci.yml/badge.svg
 [ci-url]: https://github.com/qntx/facilitator/actions/workflows/ci.yml
-[crate-badge]: https://img.shields.io/crates/v/facilitator.svg
-[crate-url]: https://crates.io/crates/facilitator
-[docker-badge]: https://img.shields.io/badge/ghcr.io-facilitator-blue
-[docker-url]: https://github.com/qntx/facilitator/pkgs/container/facilitator
 [license-badge]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg
 [license-url]: #license
 [rust-badge]: https://img.shields.io/badge/rust-1.95%20%2B%20edition%202024-orange.svg
@@ -19,49 +13,44 @@
 
 **[x402](https://www.x402.org/) V2 facilitator process** — verifies payment payloads and settles transactions on-chain over HTTP.
 
-The facilitator is a trusted third party that acts on behalf of resource servers. It does not hold funds — it only validates payment payloads and broadcasts settlement transactions to the blockchain.
+Built on [r402](https://github.com/qntx/r402) **0.19.1**. This is facilitator 2.0: there is no compatibility with 1.0.0 config, r402 0.17, `/health`, Watchtower, or `fctl`. Replace `config.toml`; do not convert.
 
-Built on [r402](https://github.com/qntx/r402) **0.17.1**. Default features host EIP-155 **exact** and **upto**, plus **Solana exact**. `batch-settlement` is opt-in. NEAR, XRPL, Hedera, Algorand, Aptos, Keeta, TVM, and Stellar exact are optional Cargo features. This process does **not** host `auth-capture`. See [Security](SECURITY.md) before using in production.
+This process constructs in-process EVM `exact`/`upto`/`auth-capture`/`batch-settlement` and SVM `exact`/`upto` facilitators (one provider `Arc` per network, process `SettlementCache`). SVM upto uses process-wide `InMemoryChannelStorage`; Path 2 is a startup error. r402 0.19.1 has no rent-cleanup manager. Serves spec §7 HTTP plus `/healthz`, `/readyz`, and an optional metrics listen. A listed scheme without a constructor, or an empty constructed map, is a startup error.
+
+v1 is a **single replica**. In-memory stores are process-local. Enabling `batch-settlement` logs `batch-settlement requires a single replica` at startup.
+
+`crates/facilitator` path-depends on a **sibling** r402 checkout (`../../../r402/crates/...` from that crate). Clone both repos next to each other; CI clones `qntx/r402` at tag `v0.19.1` into the same layout.
+
+```text
+<parent>/
+  facilitator/    # this repo
+  r402/           # git clone --branch v0.19.1 https://github.com/qntx/r402
+```
 
 ## Quick Start
 
 ```bash
-# Install from crates.io
-cargo install facilitator
-
-# Generate a commented config template
-facilitator init
-
-# Edit config.toml with your RPC URLs and signer keys, then start
-facilitator serve
+# from <parent>/facilitator, with <parent>/r402 present
+cargo run -p facilitator -- init
+# edit config.toml — named [signer.*] tables, env/file secrets only
+cargo run -p facilitator -- validate -c config.toml
+cargo run -p facilitator -- serve -c config.toml
 ```
 
 Requires **Rust 1.95**.
-
-### Docker
-
-```bash
-# Using pre-built image
-docker run -p 8080:8080 -v ./config.toml:/app/config.toml ghcr.io/qntx/facilitator
-
-# Or build from source (1.0.0 default FEATURES)
-docker build -t facilitator .
-docker build -t facilitator --build-arg FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry .
-docker run -p 8080:8080 -v ./config.toml:/app/config.toml facilitator
-```
-
-Production stack (Caddy + Watchtower): [`deploy/`](deploy/). One replica; do not scale — see cache note below.
 
 ## API
 
 | Method | Path | Description |
 | --- | --- | --- |
+| `POST` | `/verify` | Verify a payment payload (spec §7.1) |
+| `POST` | `/settle` | Settle a payment (spec §7.2) |
 | `GET` | `/supported` | List supported payment kinds (version / scheme / network) |
-| `POST` | `/verify` | Verify a payment payload against requirements |
-| `POST` | `/settle` | Settle an accepted payment on-chain |
-| `GET` | `/health` | Process liveness (not part of the x402 protocol) |
+| `GET` | `/healthz` | Liveness |
+| `GET` | `/readyz` | Readiness (200 when at least one kind is registered) |
+| `GET` | `/metrics` | Prometheus text; **metrics listen only**, never the protocol port |
 
-There is no `GET /`. Protocol verify/settle outcomes are HTTP 200 with structured JSON (`isValid` / `success`). HTTP 400 is only returned for an unparseable body.
+There is no `GET /` and no `GET /health`. Optional `[http.auth]` requires `Authorization: Bearer` on `/verify`, `/settle`, and `/supported`. Ops routes stay unauthenticated.
 
 ## CLI
 
@@ -69,126 +58,96 @@ There is no `GET /`. Protocol verify/settle outcomes are HTTP 200 with structure
 facilitator <COMMAND>
 
 Commands:
-  init   Generate a default TOML configuration file
-  serve  Start the facilitator HTTP server
+  init       Write config.example.toml-equivalent to PATH
+  validate   Load config, construct facilitators, print /supported JSON
+  serve      Bind and run
 
 Options:
-  -h, --help     Print help
-  -V, --version  Print version
+  -c, --config <PATH>   default: config.toml; env: FACILITATOR_CONFIG
 ```
 
-### `init`
-
-```text
-facilitator init [OPTIONS]
-
-Options:
-  -o, --output <PATH>  Output path [default: config.toml]
-      --force          Overwrite existing file
-```
-
-### `serve`
-
-```text
-facilitator serve [OPTIONS]
-
-Options:
-  -c, --config <PATH>  Path to TOML config file [default: config.toml]
-```
+`init --force` overwrites. `validate` and `serve` construct listed schemes. Unknown scheme **names** fail at parse; a listed scheme this build cannot construct fails at startup.
 
 ## Configuration
 
-The server loads configuration from a TOML file (default: `config.toml`). Run `facilitator init` to generate a template for families compiled into the binary.
+See [`config.example.toml`](config.example.toml) (EVM `schemes = ["exact", "upto"]`) and [`config.example.full.toml`](config.example.full.toml) (same plus SVM `exact` and `upto`).
 
-```toml
-host = "0.0.0.0"
-port = 8080
-log_level = "info"
+Named `[signer.*]` plus per-network references. Literal private keys, `settlement_mode`, `[signers]`, and `[[schemes]]` are startup errors.
 
-[signers]
-evm = ["$EVM_SIGNER_PRIVATE_KEY"]       # hex, 0x-prefixed
-solana = "$SOLANA_SIGNER_PRIVATE_KEY"    # base58, 64-byte keypair
+Env overlay: `FACILITATOR_HTTP_LISTEN`, `FACILITATOR_HTTP_METRICS_LISTEN`, `FACILITATOR_LOG_LEVEL`, `RUST_LOG`, `FACILITATOR_CONFIG`.
 
-[chains."eip155:84532"]
-rpc = [{ http = "https://sepolia.base.org" }]
-receipt_timeout_secs = 20
+## Deploy
 
-[chains."solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
-rpc = "https://api.devnet.solana.com"
+Image tag: `ghcr.io/qntx/facilitator:2.0.0`. Default features are `evm` + `svm`. Runtime is [`gcr.io/distroless/cc-debian12:nonroot`](https://github.com/GoogleContainerTools/distroless) (CA certs, no shell, no curl). There is no image `HEALTHCHECK`; probe `GET /healthz` and `GET /readyz`.
+
+One replica. `SettlementCache` is in-memory. Do not scale. Pin an explicit tag; do not use Watchtower or `fctl`.
+
+Drain is `settle_timeout + 5s` (default 35s): compose `stop_grace_period: 35s`, systemd `TimeoutStopSec=35`.
+
+### Docker Compose (local)
+
+[`compose.yaml`](compose.yaml) mounts [`config.example.toml`](config.example.toml) (EVM `exact`+`upto`) and overlays `FACILITATOR_HTTP_LISTEN=0.0.0.0:8080` and `FACILITATOR_HTTP_METRICS_LISTEN=0.0.0.0:9090`.
+
+```bash
+export FACILITATOR_EVM_KEY=0x...
+docker compose up --build
 ```
 
-Do **not** add `[[schemes]]`. Schemes are compile-time (`chain-eip155` registers EVM exact; `scheme-upto` / `scheme-batch-settlement` register those schemes; `chain-solana` registers Solana exact). A `schemes` key is a startup error. This process does not host `auth-capture`.
+SVM overlay: set `FACILITATOR_CONFIG` to [`config.example.full.toml`](config.example.full.toml) and add [`compose.svm.yaml`](compose.svm.yaml) (fee-payer key at `/run/secrets/solana.key`).
 
-Empty `[chains]`, an unknown CAIP-2 namespace, or a family not compiled into the binary is a startup error.
+```bash
+export FACILITATOR_EVM_KEY=0x...
+export FACILITATOR_CONFIG=./config.example.full.toml
+export SVM_FEE_PAYER_KEY=./solana.key
+docker compose -f compose.yaml -f compose.svm.yaml up --build
+```
 
-HTTP timeouts: 30 s on `/verify`, `/settle`, and `/supported`; 5 s on `/health`. Keep `receipt_timeout_secs` below the 30 s client budget (default 20).
+### TLS (Caddy)
 
-### Environment Variables
+Optional compose profile. Edit the hostname in [`deploy/Caddyfile`](deploy/Caddyfile). Caddy does not proxy `/metrics`.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `HOST` | `0.0.0.0` | Bind address |
-| `PORT` | `8080` | Listen port |
-| `CONFIG` | `config.toml` | Config file path (for `serve`) |
-| `OTEL_*` | — | OpenTelemetry configuration |
+```bash
+export FACILITATOR_EVM_KEY=0x...
+docker compose -f deploy/compose.yaml --profile tls up --build
+```
 
-## Supported Chains
+Protocol is on loopback `:8080`; metrics on loopback `:9090`; Caddy on `:80`/`:443`.
 
-| Family | This build | Notes |
-| --- | --- | --- |
-| **EVM (EIP-155) exact** | default | Ethereum, Base, and any `eip155:<id>` with RPC + signer |
-| **EVM (EIP-155) upto** | default (`scheme-upto`) | Permit2 usage-based; official TS `UptoEvmScheme` |
-| **EVM (EIP-155) batch-settlement** | opt-in | r402 `MemoryChannelStore` is **single-process**. Pin settle to one replica; do not split the store across workers. |
-| **EVM (EIP-155) auth-capture** | not hosted | Official TS facilitator servers do not register it |
-| **Solana (SVM) exact** | default | Any `solana:<genesis>` with RPC + base58 keypair |
-| **NEAR exact** | `--features chain-near` | Relayers from `[signers].near` (`account_id` + `secret_key`) |
-| **XRPL exact** | `--features chain-xrpl` | No facilitator signer; `[signers].xrpl` is a startup error |
-| **Hedera exact** | `--features chain-hedera` | `hedera:mainnet` / `hedera:testnet`; no `rpc` (optional `mirror_url` / `node_url`) |
-| **Algorand exact** | `--features chain-algorand` | standard-base64 seeds; optional `algod_url` / `algod_token` |
-| **Aptos exact** | `--features chain-aptos` | 32-byte ed25519 hex; optional string `rpc` |
-| **Keeta exact** | `--features chain-keeta` | hex/base64 32-byte seed + indices; no `rpc`; no mnemonic |
-| **TON (TVM) exact** | `--features chain-tvm` | hex/base64 32- or 64-byte key; optional string `rpc` |
-| **Stellar exact** | `--features chain-stellar` | `S…` secrets; pubnet requires `rpc` |
-| **Tron exact** | blocked | r402-tron 0.17.1 has no `SchemeBuilder<&TronChainProvider>` |
+### systemd
 
-`SettlementCache` (in-memory, TTL 120 s) is per process. `MemoryChannelStore` exists only if `scheme-batch-settlement` is built. Pin `/settle` to one replica; do not scale or put two facilitators behind one Caddy. Watchtower rolling restart does not overlap two copies of this compose service.
+```bash
+sudo useradd --system --home /etc/facilitator --shell /usr/sbin/nologin facilitator
+sudo install -D -m 0755 target/release/facilitator /usr/bin/facilitator
+sudo install -d -m 0755 /etc/facilitator
+sudo install -m 0600 -o facilitator -g facilitator config.toml /etc/facilitator/config.toml
+sudo install -m 0644 deploy/systemd/facilitator.service /etc/systemd/system/facilitator.service
+# optional: /etc/facilitator/env  (FACILITATOR_EVM_KEY=..., RUST_LOG=...)
+sudo systemctl daemon-reload
+sudo systemctl enable --now facilitator
+```
+
+[`deploy/systemd/facilitator.service`](deploy/systemd/facilitator.service): `Type=simple`, `Restart=on-failure`, `EnvironmentFile=-/etc/facilitator/env`, `ExecStart=/usr/bin/facilitator serve -c /etc/facilitator/config.toml`, `TimeoutStopSec=35`.
+
+### Image
+
+```bash
+docker build -t ghcr.io/qntx/facilitator:2.0.0 .
+```
+
+The builder clones `qntx/r402` at tag `v0.19.1` (`--build-arg R402_REF=...` to override) so the crate path deps resolve. CI publishes `ghcr.io/qntx/facilitator` on `v*` tags with buildx SBOM and provenance attestation. Pull requests and `workflow_dispatch` only prove the image builds (no push, no SBOM). metadata-action also moves `:latest` and `:2`; pin `:2.0.0` or a digest.
 
 ## Feature Flags
 
 | Feature | Default | Description |
 | --- | --- | --- |
-| `chain-eip155` | ✓ | EVM exact via [r402-evm](https://crates.io/crates/r402-evm) 0.17.1 |
-| `chain-solana` | ✓ | Solana exact via [r402-solana](https://crates.io/crates/r402-solana) 0.17.1 |
-| `scheme-upto` | ✓ | Register EVM `upto`. Requires `chain-eip155`. Registration-only (does not compile r402-evm modules out). |
-| `scheme-batch-settlement` | | Register EVM `batch-settlement`. Requires `chain-eip155`. `MemoryChannelStore` is in-memory per process. |
-| `chain-near` | | NEAR exact via [r402-near](https://crates.io/crates/r402-near) 0.17.1 |
-| `chain-xrpl` | | XRPL exact via [r402-xrpl](https://crates.io/crates/r402-xrpl) 0.17.1 |
-| `chain-hedera` | | Hedera exact via [r402-hedera](https://crates.io/crates/r402-hedera) 0.17.1 |
-| `chain-algorand` | | Algorand exact via [r402-algorand](https://crates.io/crates/r402-algorand) 0.17.1 |
-| `chain-aptos` | | Aptos exact via [r402-aptos](https://crates.io/crates/r402-aptos) 0.17.1 |
-| `chain-keeta` | | Keeta exact via [r402-keeta](https://crates.io/crates/r402-keeta) 0.17.1 |
-| `chain-tvm` | | TON exact via [r402-tvm](https://crates.io/crates/r402-tvm) 0.17.1 |
-| `chain-stellar` | | Stellar exact via [r402-stellar](https://crates.io/crates/r402-stellar) 0.17.1 |
-| `telemetry` | ✓ | OpenTelemetry tracing and metrics |
-| `metrics` | | Process HTTP `facilitator_http_*` via the [`metrics`](https://docs.rs/metrics/0.24) facade; enables `r402-core/metrics` for `r402_settlement_cache_reserve_total` |
+| `evm` | ✓ | Parse EIP-155 tables and construct `exact`, `upto`, `auth-capture`, `batch-settlement` |
+| `svm` | ✓ | Parse Solana tables and construct `exact` and `upto` |
+| `telemetry` | ✓ | Reserved for OTLP |
+| `metrics` | ✓ | Enables `r402-facilitator/metrics` |
+| `near` / `xrpl` / `hedera` / `avm` / `aptos` / `keeta` / `tvm` / `stellar` / `concordium` | | Compiled-out vs reserved family errors |
+| `experimental-tron` / `extra-casper` | | Rejected unless the feature is on |
 
-### Metrics (`--features metrics`)
-
-The binary does **not** install a recorder and does not bind Prometheus. Operators attach one (for example `metrics-exporter-prometheus`). `telemetry` OTLP (`MetricsLayer`) does not scrape this facade.
-
-| Name | `result` |
-| --- | --- |
-| `facilitator_http_verify_total` | `valid` \| `invalid` \| `error` |
-| `facilitator_http_verify_duration_seconds` | same |
-| `facilitator_http_settle_total` | `success` \| `failure` \| `error` |
-| `facilitator_http_settle_duration_seconds` | same |
-
-`error` is HTTP 400, cancelled/504 timeout, and `FacilitatorError` other than a missing handler. Envelope rejects and `no_facilitator_for_network` are `invalid` / `failure`. This process never increments `r402_facilitator_*`.
-
-```bash
-cargo install facilitator --no-default-features --features chain-eip155,chain-solana,scheme-upto
-cargo install facilitator --features chain-near,chain-xrpl,chain-hedera,chain-algorand,chain-aptos,chain-keeta,chain-tvm,chain-stellar,metrics
-```
+Schemes are config lists, not Cargo features. If `evm` is compiled, `exact` / `upto` / `auth-capture` / `batch-settlement` are known **names**.
 
 ## Security
 
@@ -210,15 +169,3 @@ Licensed under either of:
 at your option.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project shall be dual-licensed as above, without any additional terms or conditions.
-
----
-
-<div align="center">
-
-A **[QuantX](https://qntx.org)** open-source project.
-
-<a href="https://qntx.org"><img alt="QuantX" width="369" src="https://raw.githubusercontent.com/qntx/.github/main/profile/qntx.svg" /></a>
-
-Code is law. We write both.
-
-</div>

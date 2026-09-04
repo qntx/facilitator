@@ -4,17 +4,66 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
-    uses: qntx/workflows/.github/workflows/ci-rust.yml@v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
-    with:
-      submodules: true
-      # hedera-proto (chain-hedera, pulled by --all-features) runs protoc in build.rs
-      apt-packages: protobuf-compiler
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # crates/facilitator path-deps ../../../r402 → $GITHUB_WORKSPACE/../r402
+      # (/home/runner/work/facilitator/r402). actions/checkout cannot write
+      # outside GITHUB_WORKSPACE; clone into .ci/r402 and symlink there.
+      - name: Checkout r402 0.19.1
+        uses: actions/checkout@v5
+        with:
+          repository: qntx/r402
+          ref: v0.19.1
+          persist-credentials: false
+          path: .ci/r402
+
+      - name: Link r402 sibling for path deps
+        run: |
+          set -euo pipefail
+          dest="$(cd "$GITHUB_WORKSPACE/.." && pwd)/r402"
+          ln -sfn "$GITHUB_WORKSPACE/.ci/r402" "$dest"
+          test -f "$dest/crates/r402-protocol/Cargo.toml"
+          test -f "$dest/crates/r402-evm/Cargo.toml"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      # --package facilitator: rustfmt --all also formats path-dep r402.
+      # nightly: rustfmt.toml group_imports is nightly-only.
+      - name: Format
+        run: cargo +nightly fmt --package facilitator --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --verbose
+
+      - name: Test
+        run: cargo test --workspace --verbose

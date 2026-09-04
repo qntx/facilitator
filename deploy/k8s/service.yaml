@@ -1,0 +1,18 @@
+# Protocol only (8080). Do not add 9090 here: /metrics is not on this port.
+apiVersion: v1
+kind: Service
+metadata:
+  name: facilitator
+  labels:
+    app.kubernetes.io/name: facilitator
+    app.kubernetes.io/component: protocol
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: facilitator
+  ports:
+    - name: protocol
+      port: 8080
+      targetPort: protocol
+      protocol: TCP

@@ -1,82 +1,41 @@
 # syntax=docker/dockerfile:1
-# ============================================================================
-# x402 Facilitator — Production Dockerfile
 #
-# Multi-stage build (requires Docker BuildKit):
-#   1. chef    — install cargo-chef for dependency caching
-#   2. planner — compute dependency recipe from Cargo.lock
-#   3. builder — compile dependencies (cached) then the release binary
-#   4. runtime — minimal Debian image with only the binary
+# Multi-stage build. Runtime is distroless (no shell, no curl).
+# HEALTHCHECK is omitted: compose/k8s HTTP probes on /healthz and /readyz.
 #
-# Build:
-#   docker build -t x402-facilitator .
-#   docker build -t x402-facilitator --build-arg FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry .
+# Path deps: crates/facilitator → ../../../r402. The builder clones
+# qntx/r402 at R402_REF (default v0.19.1) next to this repo.
 #
-# Run:
-#   docker run -p 8080:8080 -v ./config.toml:/app/config.toml x402-facilitator
-# ============================================================================
+#   docker build -t ghcr.io/qntx/facilitator:2.0.0 .
 
 ARG RUST_VERSION=1.95
 
-# ------------------ Stage 1: Chef (dependency caching) ----------------------
-FROM rust:${RUST_VERSION}-bookworm AS chef
+FROM rust:${RUST_VERSION}-bookworm AS builder
 
-# hedera-proto (chain-hedera) compiles protobufs; FEATURES may enable it.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends protobuf-compiler \
-    && rm -rf /var/lib/apt/lists/*
+ARG R402_REF=v0.19.1
+ENV GIT_TERMINAL_PROMPT=0
+RUN git clone --depth 1 --branch "${R402_REF}" https://github.com/qntx/r402.git /src/r402 \
+    && test -f /src/r402/crates/r402-protocol/Cargo.toml
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo install cargo-chef@0.1.71 --locked
-WORKDIR /src
-
-# ------------------ Stage 2: Prepare recipe ---------------------------------
-FROM chef AS planner
-
+WORKDIR /src/facilitator
 COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
 
-# ------------------ Stage 3: Build dependencies + binary --------------------
-FROM chef AS builder
-
-# --no-default-features: FEATURES is the image set, not an overlay on crate defaults.
-ARG FEATURES=chain-eip155,chain-solana,scheme-upto,telemetry
-
-COPY --from=planner /src/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
-    cargo chef cook --release --no-default-features --features "${FEATURES}" --recipe-path recipe.json
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/facilitator/target \
+    cargo build --release --locked --bin facilitator \
+    && cp /src/facilitator/target/release/facilitator /usr/local/bin/facilitator
 
-COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
-    cargo build --release --no-default-features --features "${FEATURES}" --bin facilitator \
-    && cp target/release/facilitator /usr/local/bin/facilitator \
-    && strip /usr/local/bin/facilitator
+FROM gcr.io/distroless/cc-debian12:nonroot
 
-# ------------------ Stage 4: Minimal runtime image --------------------------
-FROM debian:bookworm-slim AS runtime
+COPY --from=builder /usr/local/bin/facilitator /usr/bin/facilitator
+COPY --chmod=644 config.example.toml /etc/facilitator/config.toml
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system facilitator \
-    && useradd --system --gid facilitator --create-home facilitator
+# In-container bind. Host example config stays 127.0.0.1; compose/k8s overlay the same vars.
+ENV FACILITATOR_HTTP_LISTEN=0.0.0.0:8080
+ENV FACILITATOR_HTTP_METRICS_LISTEN=0.0.0.0:9090
 
-WORKDIR /app
+EXPOSE 8080 9090
 
-COPY --from=builder /usr/local/bin/facilitator /usr/local/bin/facilitator
-RUN chown facilitator:facilitator /app
-
-USER facilitator
-
-ENV HOST=0.0.0.0
-ENV PORT=8080
-
-EXPOSE 8080
-
-HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -sf http://localhost:${PORT}/health || exit 1
-
-ENTRYPOINT ["facilitator"]
-CMD ["serve", "--config", "/app/config.toml"]
+ENTRYPOINT ["/usr/bin/facilitator"]
+CMD ["serve", "-c", "/etc/facilitator/config.toml"]

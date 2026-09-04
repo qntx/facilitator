@@ -21,22 +21,26 @@ debug/
 .env
 .env.*
 config.toml
+*.key
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Docker (avoid recursive COPY)
-Dockerfile
-.dockerignore
-docker-compose*.yml
-
-# Deployment configs (runtime only, not needed in build)
+# Compose / deploy (runtime only)
+compose.yaml
+compose.*.yaml
 deploy/
 
-# Rust toolchain (the Dockerfile base image already provides the correct version)
+# Image uses the rust:${RUST_VERSION} compiler, not rust-toolchain.toml.
 rust-toolchain.toml
 
 # Docs / misc
 *.md
 LICENSE*
+Justfile
+Makefile
+deny.toml
+clippy.toml
+rustfmt.toml
+.markdownlint.jsonc
