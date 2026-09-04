@@ -1,4 +1,5 @@
-//! Compose: NEAR / XRPL / Hedera / AVM exact construction.
+//! Compose: remaining exact families (near/xrpl/hedera/avm + aptos/keeta/tvm/stellar).
+//! Concordium `connect` dials gRPC — parse + signer error mapping only.
 
 #![allow(
     unused_crate_dependencies,
@@ -20,17 +21,26 @@
     feature = "near",
     feature = "xrpl",
     feature = "hedera",
-    feature = "avm"
+    feature = "avm",
+    feature = "aptos",
+    feature = "keeta",
+    feature = "tvm",
+    feature = "stellar",
+    feature = "concordium"
 ))]
 use facilitator::{build, parse_config_toml};
 #[cfg(any(
     feature = "near",
     feature = "xrpl",
     feature = "hedera",
-    feature = "avm"
+    feature = "avm",
+    feature = "aptos",
+    feature = "keeta",
+    feature = "tvm",
+    feature = "stellar"
 ))]
 use r402_facilitator::Facilitator;
-#[cfg(any(feature = "near", feature = "hedera"))]
+#[cfg(any(feature = "near", feature = "hedera", feature = "aptos"))]
 use r402_protocol::payment::SupportedResponse;
 
 /// Dummy HTTP URL: `Provider::new` does not dial.
@@ -38,7 +48,10 @@ use r402_protocol::payment::SupportedResponse;
     feature = "near",
     feature = "xrpl",
     feature = "hedera",
-    feature = "avm"
+    feature = "avm",
+    feature = "aptos",
+    feature = "tvm",
+    feature = "stellar"
 ))]
 const DUMMY_RPC: &str = "http://127.0.0.1:1";
 
@@ -55,16 +68,41 @@ const HEDERA_KEY: &str = "302e020100300506032b65700422042098aa82d6125b5efa04bf83
 const HEDERA_ACCOUNT: &str = "0.0.5001";
 
 /// 32-byte ed25519 seed `[2u8; 32]` as standard base64.
-#[cfg(feature = "avm")]
+#[cfg(any(feature = "avm", feature = "keeta"))]
 const AVM_KEY: &str = "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=";
 #[cfg(feature = "avm")]
 const AVM_TESTNET: &str = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe";
+
+/// 32-byte ed25519 private key as hex (`[2u8; 32]`).
+#[cfg(feature = "aptos")]
+const APTOS_KEY: &str = "0202020202020202020202020202020202020202020202020202020202020202";
+
+/// 32-byte Highload seed as hex (`[7u8; 32]`).
+#[cfg(feature = "tvm")]
+const TVM_KEY: &str = "0707070707070707070707070707070707070707070707070707070707070707";
+
+/// Oracle Stellar secret (`S…`).
+#[cfg(feature = "stellar")]
+const STELLAR_KEY: &str = "SCKB3ECHCPVM4HJPNCQWTQWJJ5XRL6UNKLTTCIH4B7TB22NKJ5GUFMIV";
+
+/// 32-byte Concordium seed as hex.
+#[cfg(feature = "concordium")]
+const CCD_KEY: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+#[cfg(feature = "concordium")]
+const CCD_ADDRESS: &str = "2xdTv8awN1BjgYEw8W1BVXVtiEwG2b29U8KoZQqJrDuEqddseE";
+#[cfg(feature = "concordium")]
+const CCD_TESTNET: &str = "ccd:4221332d34e1694168c2a0c0b3fd0f27";
 
 #[cfg(any(
     feature = "near",
     feature = "xrpl",
     feature = "hedera",
-    feature = "avm"
+    feature = "avm",
+    feature = "aptos",
+    feature = "keeta",
+    feature = "tvm",
+    feature = "stellar",
+    feature = "concordium"
 ))]
 fn lookup(key: &str) -> Option<String> {
     match key {
@@ -74,6 +112,16 @@ fn lookup(key: &str) -> Option<String> {
         "FACILITATOR_HEDERA_KEY" => Some(HEDERA_KEY.to_owned()),
         #[cfg(feature = "avm")]
         "FACILITATOR_AVM_KEY" => Some(AVM_KEY.to_owned()),
+        #[cfg(feature = "keeta")]
+        "FACILITATOR_KEETA_KEY" => Some(AVM_KEY.to_owned()),
+        #[cfg(feature = "aptos")]
+        "FACILITATOR_APTOS_KEY" => Some(APTOS_KEY.to_owned()),
+        #[cfg(feature = "tvm")]
+        "FACILITATOR_TVM_KEY" => Some(TVM_KEY.to_owned()),
+        #[cfg(feature = "stellar")]
+        "FACILITATOR_STELLAR_KEY" => Some(STELLAR_KEY.to_owned()),
+        #[cfg(feature = "concordium")]
+        "FACILITATOR_CCD_KEY" => Some(CCD_KEY.to_owned()),
         _ => None,
     }
 }
@@ -200,6 +248,144 @@ async fn avm_invalid_key_is_startup_error() {
     );
 }
 
+#[cfg(feature = "aptos")]
+#[tokio::test]
+async fn aptos_exact_constructs() {
+    let cfg = parse_config_toml(&aptos_doc()).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_exact_kind_at(&supported, 0, "aptos:1");
+    assert!(
+        supported.signers.contains_key("aptos:*"),
+        "aptos:* signer key"
+    );
+}
+
+#[cfg(feature = "aptos")]
+#[tokio::test]
+async fn aptos_invalid_key_is_startup_error() {
+    let cfg = parse_config_toml(&aptos_doc()).expect("parse");
+    let err = build(&cfg, &|key| {
+        (key == "FACILITATOR_APTOS_KEY").then(|| "not-an-aptos-key".to_owned())
+    })
+    .await
+    .expect_err("bad key");
+    assert!(
+        err.to_string()
+            .contains("signer 'aptos_hot' is not a valid Aptos private key"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "keeta")]
+#[tokio::test]
+async fn keeta_exact_constructs() {
+    let cfg = parse_config_toml(&keeta_doc()).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "one kind");
+    let kind = &supported.kinds[0];
+    assert_eq!(kind.scheme.as_str(), "exact", "scheme");
+    assert_eq!(kind.network.as_str(), "keeta:1413829460", "network");
+    assert!(
+        supported.signers.contains_key("keeta:*"),
+        "keeta:* signer key"
+    );
+}
+
+#[cfg(feature = "keeta")]
+#[tokio::test]
+async fn keeta_invalid_key_is_startup_error() {
+    let cfg = parse_config_toml(&keeta_doc()).expect("parse");
+    let err = build(&cfg, &|key| {
+        (key == "FACILITATOR_KEETA_KEY").then(|| "not-base64".to_owned())
+    })
+    .await
+    .expect_err("bad key");
+    assert!(
+        err.to_string()
+            .contains("signer 'keeta_hot' is not a valid Keeta base64 seed"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "tvm")]
+#[tokio::test]
+async fn tvm_exact_constructs() {
+    let cfg = parse_config_toml(&tvm_doc()).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "one kind");
+    let kind = &supported.kinds[0];
+    assert_eq!(kind.scheme.as_str(), "exact", "scheme");
+    assert_eq!(kind.network.as_str(), "tvm:-3", "network");
+    assert!(supported.signers.contains_key("tvm:*"), "tvm:* signer key");
+}
+
+#[cfg(feature = "tvm")]
+#[tokio::test]
+async fn tvm_invalid_key_is_startup_error() {
+    let cfg = parse_config_toml(&tvm_doc()).expect("parse");
+    let err = build(&cfg, &|key| {
+        (key == "FACILITATOR_TVM_KEY").then(|| "not-a-tvm-key".to_owned())
+    })
+    .await
+    .expect_err("bad key");
+    assert!(
+        err.to_string()
+            .contains("signer 'tvm_hot' is not a valid TVM Highload V3 private key"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "stellar")]
+#[tokio::test]
+async fn stellar_exact_constructs() {
+    let cfg = parse_config_toml(&stellar_doc()).expect("parse");
+    let map = build(&cfg, &lookup).await.expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "one kind");
+    let kind = &supported.kinds[0];
+    assert_eq!(kind.scheme.as_str(), "exact", "scheme");
+    assert_eq!(kind.network.as_str(), "stellar:testnet", "network");
+    assert!(
+        supported.signers.contains_key("stellar:*"),
+        "stellar:* signer key"
+    );
+}
+
+#[cfg(feature = "stellar")]
+#[tokio::test]
+async fn stellar_invalid_key_is_startup_error() {
+    let cfg = parse_config_toml(&stellar_doc()).expect("parse");
+    let err = build(&cfg, &|key| {
+        (key == "FACILITATOR_STELLAR_KEY").then(|| "not-a-stellar-key".to_owned())
+    })
+    .await
+    .expect_err("bad key");
+    assert!(
+        err.to_string()
+            .contains("signer 'stellar_hot' is not a valid Stellar secret key"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "concordium")]
+#[tokio::test]
+async fn concordium_invalid_key_is_startup_error() {
+    let cfg = parse_config_toml(&ccd_doc()).expect("parse");
+    let err = build(&cfg, &|key| {
+        (key == "FACILITATOR_CCD_KEY").then(|| "not-hex".to_owned())
+    })
+    .await
+    .expect_err("bad key");
+    assert!(
+        err.to_string()
+            .contains("signer 'ccd_hot' is not a valid Concordium address+seed"),
+        "got {err}"
+    );
+}
+
 #[cfg(feature = "near")]
 fn near_doc() -> String {
     format!(
@@ -275,7 +461,105 @@ algod_url = "{DUMMY_RPC}"
     )
 }
 
-#[cfg(any(feature = "near", feature = "hedera"))]
+#[cfg(feature = "aptos")]
+fn aptos_doc() -> String {
+    format!(
+        r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.aptos_hot]
+source = "env"
+env = "FACILITATOR_APTOS_KEY"
+
+[network."aptos:1"]
+rpc = "{DUMMY_RPC}"
+fee_payers = ["aptos_hot"]
+schemes = ["exact"]
+"#
+    )
+}
+
+#[cfg(feature = "keeta")]
+fn keeta_doc() -> String {
+    r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.keeta_hot]
+source = "env"
+env = "FACILITATOR_KEETA_KEY"
+
+[network."keeta:1413829460"]
+signer = "keeta_hot"
+indices = [0]
+schemes = ["exact"]
+"#
+    .to_owned()
+}
+
+#[cfg(feature = "tvm")]
+fn tvm_doc() -> String {
+    format!(
+        r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.tvm_hot]
+source = "env"
+env = "FACILITATOR_TVM_KEY"
+
+[network."tvm:-3"]
+rpc = "{DUMMY_RPC}"
+signer = "tvm_hot"
+schemes = ["exact"]
+"#
+    )
+}
+
+#[cfg(feature = "stellar")]
+fn stellar_doc() -> String {
+    format!(
+        r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.stellar_hot]
+source = "env"
+env = "FACILITATOR_STELLAR_KEY"
+
+[network."stellar:testnet"]
+rpc = "{DUMMY_RPC}"
+signers = ["stellar_hot"]
+schemes = ["exact"]
+"#
+    )
+}
+
+#[cfg(feature = "concordium")]
+fn ccd_doc() -> String {
+    format!(
+        r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.ccd_hot]
+source = "env"
+env = "FACILITATOR_CCD_KEY"
+
+[network."{CCD_TESTNET}"]
+signers = [{{ address = "{CCD_ADDRESS}", signer = "ccd_hot" }}]
+schemes = ["exact"]
+"#
+    )
+}
+
+#[cfg(any(feature = "near", feature = "hedera", feature = "aptos"))]
 fn assert_exact_kind_at(supported: &SupportedResponse, index: usize, network: &str) {
     let kind = &supported.kinds[index];
     assert_eq!(kind.x402_version, 2, "V2");

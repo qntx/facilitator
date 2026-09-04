@@ -22,12 +22,22 @@ use std::process::ExitCode;
 use clap::Parser;
 use cli::{Cli, Commands};
 pub use compose::{FacilitatorMap, build};
+#[cfg(feature = "aptos")]
+pub use config::AptosNetwork;
 #[cfg(feature = "avm")]
 pub use config::AvmNetwork;
+#[cfg(feature = "concordium")]
+pub use config::ConcordiumAccount;
+#[cfg(feature = "keeta")]
+pub use config::KeetaNetwork;
 #[cfg(any(feature = "near", feature = "hedera"))]
 pub use config::NamedAccount;
 #[cfg(feature = "near")]
 pub use config::NearNetwork;
+#[cfg(feature = "stellar")]
+pub use config::StellarNetwork;
+#[cfg(feature = "tvm")]
+pub use config::TvmNetwork;
 #[cfg(feature = "xrpl")]
 pub use config::XrplNetwork;
 pub use config::{
@@ -35,6 +45,8 @@ pub use config::{
     LogFormat, Network, RpcConfig, RpcEndpoint, SchemeTables, SvmExactConfig, SvmNetwork,
     SvmSchemeConfig, SvmUptoConfig, load_config, parse_config_toml,
 };
+#[cfg(feature = "concordium")]
+pub use config::{ConcordiumNetwork, GrpcConfig};
 #[cfg(feature = "hedera")]
 pub use config::{HederaAliasPolicy, HederaNetwork};
 pub use error::Error;

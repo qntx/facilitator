@@ -30,11 +30,11 @@ near = ["dep:r402-near", "r402-near/facilitator"]
 xrpl = ["dep:r402-xrpl", "r402-xrpl/facilitator"]
 hedera = ["dep:r402-hedera", "r402-hedera/facilitator"]
 avm = ["dep:r402-avm", "r402-avm/facilitator"]
-aptos = []
-keeta = []
-tvm = []
-stellar = []
-concordium = []
+aptos = ["dep:r402-aptos", "r402-aptos/facilitator"]
+keeta = ["dep:r402-keeta", "r402-keeta/facilitator", "dep:base64"]
+tvm = ["dep:r402-tvm", "r402-tvm/facilitator"]
+stellar = ["dep:r402-stellar", "r402-stellar/facilitator"]
+concordium = ["dep:r402-concordium", "r402-concordium/facilitator"]
 experimental-tron = []
 telemetry = [
     "r402-evm?/telemetry",
@@ -43,6 +43,11 @@ telemetry = [
     "r402-xrpl?/telemetry",
     "r402-hedera?/telemetry",
     "r402-avm?/telemetry",
+    "r402-aptos?/telemetry",
+    "r402-keeta?/telemetry",
+    "r402-tvm?/telemetry",
+    "r402-stellar?/telemetry",
+    "r402-concordium?/telemetry",
 ]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "r402-facilitator/metrics"]
 
@@ -51,6 +56,7 @@ alloy-network = { workspace = true, optional = true }
 alloy-primitives = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
 axum = { workspace = true }
+base64 = { version = "0.23", optional = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
 humantime-serde = { workspace = true }
@@ -77,6 +83,11 @@ r402-near = { version = "0.19.1", path = "../../../r402/crates/r402-near", defau
 r402-xrpl = { version = "0.19.1", path = "../../../r402/crates/r402-xrpl", default-features = false, optional = true }
 r402-hedera = { version = "0.19.1", path = "../../../r402/crates/r402-hedera", default-features = false, optional = true }
 r402-avm = { version = "0.19.1", path = "../../../r402/crates/r402-avm", default-features = false, optional = true }
+r402-aptos = { version = "0.19.1", path = "../../../r402/crates/r402-aptos", default-features = false, optional = true }
+r402-keeta = { version = "0.19.1", path = "../../../r402/crates/r402-keeta", default-features = false, optional = true }
+r402-tvm = { version = "0.19.1", path = "../../../r402/crates/r402-tvm", default-features = false, optional = true }
+r402-stellar = { version = "0.19.1", path = "../../../r402/crates/r402-stellar", default-features = false, optional = true }
+r402-concordium = { version = "0.19.1", path = "../../../r402/crates/r402-concordium", default-features = false, optional = true }
 solana-keypair = { workspace = true, optional = true }
 
 [dev-dependencies]

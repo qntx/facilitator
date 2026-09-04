@@ -537,6 +537,7 @@ schemes = ["exact"]
     assert!(avm.algod_token_env.is_none(), "omit token");
 }
 
+#[cfg(not(feature = "aptos"))]
 #[test]
 fn compiled_out_aptos_names_feature() {
     let raw = r#"
@@ -553,6 +554,373 @@ schemes = ["exact"]
         "got {err}"
     );
     assert!(err.to_string().contains("--features aptos"), "got {err}");
+}
+
+#[cfg(feature = "aptos")]
+#[test]
+fn aptos_optional_rpc_omit_ok() {
+    let raw = r#"
+[signer.aptos_hot]
+source = "env"
+env = "APTOS_KEY"
+[network."aptos:1"]
+fee_payers = ["aptos_hot"]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("omit rpc");
+    let aptos = cfg.networks.iter().find_map(|net| {
+        if let Network::Aptos(aptos) = net {
+            Some(aptos)
+        } else {
+            None
+        }
+    });
+    let aptos = aptos.expect("aptos network");
+    assert!(aptos.rpc.is_none(), "omit = SDK default");
+    assert!(aptos.sponsor_transactions, "provider default true");
+    assert_eq!(
+        aptos.fee_payers,
+        ["aptos_hot".to_owned()],
+        "fee payer names"
+    );
+}
+
+#[cfg(feature = "aptos")]
+#[test]
+fn aptos_rpc_and_rpc_env_are_exclusive() {
+    let raw = r#"
+[signer.aptos_hot]
+source = "env"
+env = "APTOS_KEY"
+[network."aptos:1"]
+rpc = "http://127.0.0.1:1"
+rpc_env = "APTOS_RPC"
+fee_payers = ["aptos_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("at most one of `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(not(feature = "keeta"))]
+#[test]
+fn compiled_out_keeta_names_feature() {
+    let raw = r#"
+[signer.keeta_hot]
+source = "env"
+env = "KEETA_KEY"
+[network."keeta:1413829460"]
+signer = "keeta_hot"
+indices = [0]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'keeta'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features keeta"), "got {err}");
+}
+
+#[cfg(feature = "keeta")]
+#[test]
+fn keeta_parses_signer_and_indices() {
+    let raw = r#"
+[signer.keeta_hot]
+source = "env"
+env = "KEETA_KEY"
+[network."keeta:1413829460"]
+signer = "keeta_hot"
+indices = [0, 1]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("keeta");
+    let keeta = cfg.networks.iter().find_map(|net| {
+        if let Network::Keeta(keeta) = net {
+            Some(keeta)
+        } else {
+            None
+        }
+    });
+    let keeta = keeta.expect("keeta network");
+    assert_eq!(keeta.signer, "keeta_hot", "named signer");
+    assert_eq!(keeta.indices, [0, 1], "derivation indices");
+}
+
+#[cfg(feature = "keeta")]
+#[test]
+fn keeta_rejects_rpc() {
+    let raw = r#"
+[signer.keeta_hot]
+source = "env"
+env = "KEETA_KEY"
+[network."keeta:1413829460"]
+rpc = "http://127.0.0.1:1"
+signer = "keeta_hot"
+indices = [0]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(err.to_string().contains("Keeta has no RPC"), "got {err}");
+    assert!(err.to_string().contains("`rpc`"), "got {err}");
+}
+
+#[cfg(feature = "keeta")]
+#[test]
+fn keeta_rejects_rpc_env() {
+    let raw = r#"
+[signer.keeta_hot]
+source = "env"
+env = "KEETA_KEY"
+[network."keeta:1413829460"]
+rpc_env = "KEETA_RPC"
+signer = "keeta_hot"
+indices = [0]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(err.to_string().contains("Keeta has no RPC"), "got {err}");
+    assert!(err.to_string().contains("`rpc_env`"), "got {err}");
+}
+
+#[cfg(not(feature = "tvm"))]
+#[test]
+fn compiled_out_tvm_names_feature() {
+    let raw = r#"
+[signer.tvm_hot]
+source = "env"
+env = "TVM_KEY"
+[network."tvm:-3"]
+signer = "tvm_hot"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'tvm'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features tvm"), "got {err}");
+}
+
+#[cfg(feature = "tvm")]
+#[test]
+fn tvm_optional_url_omit_ok() {
+    let raw = r#"
+[signer.tvm_hot]
+source = "env"
+env = "TVM_KEY"
+[network."tvm:-3"]
+signer = "tvm_hot"
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("omit url");
+    let tvm = cfg.networks.iter().find_map(|net| {
+        if let Network::Tvm(tvm) = net {
+            Some(tvm)
+        } else {
+            None
+        }
+    });
+    let tvm = tvm.expect("tvm network");
+    assert!(tvm.provider_base_url.is_none(), "omit = Toncenter default");
+    assert_eq!(tvm.signer, "tvm_hot", "named signer");
+}
+
+#[cfg(feature = "tvm")]
+#[test]
+fn tvm_provider_base_url_and_rpc_are_exclusive() {
+    let raw = r#"
+[signer.tvm_hot]
+source = "env"
+env = "TVM_KEY"
+[network."tvm:-3"]
+provider_base_url = "http://127.0.0.1:1"
+rpc = "http://127.0.0.1:2"
+signer = "tvm_hot"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("at most one of `provider_base_url` or `rpc`"),
+        "got {err}"
+    );
+}
+
+#[cfg(not(feature = "stellar"))]
+#[test]
+fn compiled_out_stellar_names_feature() {
+    let raw = r#"
+[signer.stellar_hot]
+source = "env"
+env = "STELLAR_KEY"
+[network."stellar:testnet"]
+signers = ["stellar_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'stellar'"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("--features stellar"), "got {err}");
+}
+
+#[cfg(feature = "stellar")]
+#[test]
+fn stellar_testnet_optional_rpc_omit_ok() {
+    let raw = r#"
+[signer.stellar_hot]
+source = "env"
+env = "STELLAR_KEY"
+[network."stellar:testnet"]
+signers = ["stellar_hot"]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("omit rpc");
+    let stellar = cfg.networks.iter().find_map(|net| {
+        if let Network::Stellar(stellar) = net {
+            Some(stellar)
+        } else {
+            None
+        }
+    });
+    let stellar = stellar.expect("stellar network");
+    assert!(stellar.rpc.is_none(), "omit = SDK default on testnet");
+}
+
+#[cfg(feature = "stellar")]
+#[test]
+fn stellar_pubnet_requires_rpc() {
+    let raw = r#"
+[signer.stellar_hot]
+source = "env"
+env = "STELLAR_KEY"
+[network."stellar:pubnet"]
+signers = ["stellar_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("requires `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+    assert!(err.to_string().contains("pubnet"), "got {err}");
+}
+
+#[cfg(feature = "stellar")]
+#[test]
+fn stellar_rpc_and_rpc_env_are_exclusive() {
+    let raw = r#"
+[signer.stellar_hot]
+source = "env"
+env = "STELLAR_KEY"
+[network."stellar:testnet"]
+rpc = "http://127.0.0.1:1"
+rpc_env = "STELLAR_RPC"
+signers = ["stellar_hot"]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("at most one of `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(not(feature = "concordium"))]
+#[test]
+fn compiled_out_ccd_names_feature() {
+    let raw = r#"
+[signer.ccd_hot]
+source = "env"
+env = "CCD_KEY"
+[network."ccd:4221332d34e1694168c2a0c0b3fd0f27"]
+signers = [{ address = "2xdTv8awN1BjgYEw8W1BVXVtiEwG2b29U8KoZQqJrDuEqddseE", signer = "ccd_hot" }]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'ccd'"),
+        "got {err}"
+    );
+    assert!(
+        err.to_string().contains("--features concordium"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "concordium")]
+#[test]
+fn ccd_optional_grpc_omit_ok() {
+    let raw = r#"
+[signer.ccd_hot]
+source = "env"
+env = "CCD_KEY"
+[network."ccd:4221332d34e1694168c2a0c0b3fd0f27"]
+signers = [{ address = "2xdTv8awN1BjgYEw8W1BVXVtiEwG2b29U8KoZQqJrDuEqddseE", signer = "ccd_hot" }]
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("omit grpc");
+    let ccd = cfg.networks.iter().find_map(|net| {
+        if let Network::Concordium(ccd) = net {
+            Some(ccd)
+        } else {
+            None
+        }
+    });
+    let ccd = ccd.expect("ccd network");
+    assert!(ccd.grpc.is_none(), "omit = default_grpc_https");
+    assert_eq!(ccd.signer_names, ["ccd_hot".to_owned()], "flattened signer");
+    assert_eq!(
+        ccd.signers[0].address, "2xdTv8awN1BjgYEw8W1BVXVtiEwG2b29U8KoZQqJrDuEqddseE",
+        "address required"
+    );
+}
+
+#[cfg(feature = "concordium")]
+#[test]
+fn ccd_grpc_and_grpc_env_are_exclusive() {
+    let raw = r#"
+[signer.ccd_hot]
+source = "env"
+env = "CCD_KEY"
+[network."ccd:4221332d34e1694168c2a0c0b3fd0f27"]
+grpc = "http://127.0.0.1:1"
+grpc_env = "CCD_GRPC"
+signers = [{ address = "2xdTv8awN1BjgYEw8W1BVXVtiEwG2b29U8KoZQqJrDuEqddseE", signer = "ccd_hot" }]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("at most one of `grpc` or `grpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "concordium")]
+#[test]
+fn ccd_requires_address_and_signer() {
+    let raw = r#"
+[signer.ccd_hot]
+source = "env"
+env = "CCD_KEY"
+[network."ccd:4221332d34e1694168c2a0c0b3fd0f27"]
+signers = [{ signer = "ccd_hot" }]
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("invalid [network.\"ccd:4221332d34e1694168c2a0c0b3fd0f27\"]"),
+        "got {err}"
+    );
 }
 
 #[test]
