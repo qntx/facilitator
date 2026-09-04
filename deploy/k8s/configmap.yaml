@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: facilitator
+  labels:
+    app.kubernetes.io/name: facilitator
+    app.kubernetes.io/version: "2.0.0"
+data:
+  config.toml: |
+    # In-cluster bind. Signers are Secret files (source = "file"), not env.
+    # Overlay FACILITATOR_HTTP_LISTEN / FACILITATOR_HTTP_METRICS_LISTEN still wins.
+
+    [http]
+    listen = "0.0.0.0:8080"
+    verify_timeout = "30s"
+    settle_timeout = "30s"
+    body_limit_bytes = 262144
+    metrics_listen = "0.0.0.0:9090"
+
+    [log]
+    level = "info"
+    format = "json"
+
+    [signer.evm_hot]
+    source = "file"
+    path = "/run/secrets/evm.key"
+    encoding = "hex"
+
+    [scheme.evm]
+    clock_skew_secs = 6
+    eip6492_allowed_factories = []
+    erc20_approval_gas_sponsoring = false
+
+    [network."eip155:84532"]
+    rpc = ["https://sepolia.base.org"]
+    signers = ["evm_hot"]
+    schemes = ["exact", "upto"]
+    eip1559 = true
+    flashblocks = false
+    receipt_timeout_secs = 20
+
+    [network."eip155:8453"]
+    rpc = ["https://mainnet.base.org"]
+    signers = ["evm_hot"]
+    schemes = ["exact", "upto"]
+    receipt_timeout_secs = 20

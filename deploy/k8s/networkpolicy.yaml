@@ -1,0 +1,29 @@
+# Restrict metrics scrape. Protocol 8080 stays reachable for clients and kubelet.
+# Prometheus peer is kube-prometheus-stack's `monitoring` namespace; retarget if needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: facilitator
+  labels:
+    app.kubernetes.io/name: facilitator
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: facilitator
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: protocol
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: metrics
