@@ -15,7 +15,7 @@
 
 Built on [r402](https://github.com/qntx/r402) **0.19.1**. This is facilitator 2.0: there is no compatibility with 1.0.0 config, r402 0.17, `/health`, Watchtower, or `fctl`. Replace `config.toml`; do not convert.
 
-This skeleton parses the 2.0 config schema and serves `GET /supported` from an in-process map that may be empty. EVM/SVM constructors, `/verify`, `/settle`, health, metrics, and deploy artifacts land in later commits.
+This process parses the 2.0 config schema and serves spec §7 HTTP plus `/healthz`, `/readyz`, and an optional metrics listen. Scheme constructors (EVM/SVM) and deploy artifacts land in later commits. The in-process map may still be empty, so `/readyz` is 503 until constructors land.
 
 `crates/facilitator` path-depends on a **sibling** r402 checkout (`../../../r402/crates/...` from that crate). Clone both repos next to each other; CI clones `qntx/r402` at tag `v0.19.1` into the same layout.
 
@@ -41,9 +41,14 @@ Requires **Rust 1.95**.
 
 | Method | Path | Description |
 | --- | --- | --- |
+| `POST` | `/verify` | Verify a payment payload (spec §7.1) |
+| `POST` | `/settle` | Settle a payment (spec §7.2) |
 | `GET` | `/supported` | List supported payment kinds (version / scheme / network) |
+| `GET` | `/healthz` | Liveness |
+| `GET` | `/readyz` | Readiness (200 when at least one kind is registered) |
+| `GET` | `/metrics` | Prometheus text; **metrics listen only**, never the protocol port |
 
-`POST /verify` and `POST /settle` are not bound in this skeleton. There is no `GET /` and no `GET /health`.
+There is no `GET /` and no `GET /health`. Optional `[http.auth]` requires `Authorization: Bearer` on `/verify`, `/settle`, and `/supported`. Ops routes stay unauthenticated.
 
 ## CLI
 

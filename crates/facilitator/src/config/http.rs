@@ -46,12 +46,44 @@ impl Default for HttpConfig {
     }
 }
 
-/// `Authorization: Bearer` env name. Presence of this table is enforced later.
+/// `Authorization: Bearer` env name. Presence of this table is enforced.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HttpAuth {
     /// Environment variable holding the shared token.
     pub bearer_env: String,
+}
+
+impl HttpAuth {
+    /// Resolve the bearer token. Missing or empty env is a startup error.
+    ///
+    /// # Errors
+    ///
+    /// Unset or empty `bearer_env` variable.
+    pub(crate) fn resolve_token(
+        &self,
+        lookup: &impl Fn(&str) -> Option<String>,
+    ) -> Result<String, crate::error::Error> {
+        if self.bearer_env.trim().is_empty() {
+            return Err(crate::error::Error::config(
+                "[http.auth] bearer_env must be a non-empty environment variable name",
+            ));
+        }
+        let raw = lookup(&self.bearer_env).ok_or_else(|| {
+            crate::error::Error::config(format!(
+                "[http.auth] environment variable '{}' is not set",
+                self.bearer_env
+            ))
+        })?;
+        let token = raw.trim();
+        if token.is_empty() {
+            return Err(crate::error::Error::config(format!(
+                "[http.auth] environment variable '{}' is empty",
+                self.bearer_env
+            )));
+        }
+        Ok(token.to_owned())
+    }
 }
 
 /// Console log settings.

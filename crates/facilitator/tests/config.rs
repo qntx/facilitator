@@ -343,3 +343,36 @@ fn receipt_timeout_must_fit_settle() {
         "got {err}"
     );
 }
+
+#[test]
+fn http_auth_missing_env_fails() {
+    let raw = evm_doc("[http.auth]\nbearer_env = \"FACILITATOR_API_TOKEN\"\n");
+    let cfg = parse_config_toml(&raw).expect("auth table parses");
+    let err = cfg
+        .resolve_secrets(&|key| (key == "FACILITATOR_EVM_KEY").then(|| "not-logged".to_owned()))
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("FACILITATOR_API_TOKEN"),
+        "got {err}"
+    );
+}
+
+#[test]
+fn http_auth_empty_bearer_env_fails() {
+    let raw = evm_doc("[http.auth]\nbearer_env = \"\"\n");
+    let err = parse_config_toml(&raw).unwrap_err();
+    assert!(err.to_string().contains("bearer_env"), "got {err}");
+}
+
+#[test]
+fn http_auth_resolves_token() {
+    let raw = evm_doc("[http.auth]\nbearer_env = \"FACILITATOR_API_TOKEN\"\n");
+    let cfg = parse_config_toml(&raw).expect("parses");
+    let token = cfg
+        .resolve_http_auth(&|key| {
+            (key == "FACILITATOR_API_TOKEN").then(|| " shared-token \n".to_owned())
+        })
+        .expect("resolves")
+        .expect("present");
+    assert_eq!(token, "shared-token", "trimmed");
+}

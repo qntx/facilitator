@@ -205,7 +205,23 @@ impl Config {
         for network in &self.networks {
             let _ = resolve_rpc(network.chain_id(), rpc_of(network), lookup)?;
         }
+        let _ = self.resolve_http_auth(lookup)?;
         Ok(())
+    }
+
+    /// Resolve `[http.auth]` if present. `None` when the table is omitted.
+    ///
+    /// # Errors
+    ///
+    /// Missing or empty bearer environment variable.
+    pub fn resolve_http_auth(
+        &self,
+        lookup: &impl Fn(&str) -> Option<String>,
+    ) -> Result<Option<String>, Error> {
+        match &self.http.auth {
+            Some(auth) => Ok(Some(auth.resolve_token(lookup)?)),
+            None => Ok(None),
+        }
     }
 
     /// Print parsed networks and schemes.
@@ -229,6 +245,29 @@ impl Config {
     fn validate(&self) -> Result<(), Error> {
         self.validate_signer_refs()?;
         self.validate_timeouts()?;
+        self.validate_http_auth()?;
+        self.validate_cors_origins()?;
+        Ok(())
+    }
+
+    fn validate_http_auth(&self) -> Result<(), Error> {
+        let Some(auth) = &self.http.auth else {
+            return Ok(());
+        };
+        if auth.bearer_env.trim().is_empty() {
+            return Err(Error::config(
+                "[http.auth] bearer_env must be a non-empty environment variable name",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_cors_origins(&self) -> Result<(), Error> {
+        for origin in &self.http.cors_origins {
+            if origin.is_empty() || origin.bytes().any(|b| !b.is_ascii() || b < 32 || b == 127) {
+                return Err(Error::config(format!("invalid CORS origin '{origin}'")));
+            }
+        }
         Ok(())
     }
 

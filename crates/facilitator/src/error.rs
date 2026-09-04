@@ -80,6 +80,15 @@ impl Error {
         }
     }
 
+    /// Server error without a source.
+    #[cfg(not(feature = "metrics"))]
+    pub(crate) fn server(context: impl Into<String>) -> Self {
+        Self::Server {
+            context: context.into(),
+            source: None,
+        }
+    }
+
     /// Server error with a source.
     pub(crate) fn server_with(
         context: impl Into<String>,
