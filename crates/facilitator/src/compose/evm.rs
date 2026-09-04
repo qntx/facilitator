@@ -1,4 +1,4 @@
-//! EIP-155 provider + exact facilitator wiring.
+//! EIP-155 provider + exact/upto facilitator wiring.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -7,15 +7,16 @@ use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
 use alloy_signer_local::PrivateKeySigner;
 use compact_str::CompactString;
-use r402_evm::Eip155ExactFacilitator;
 use r402_evm::chain::{Eip155ChainProvider, Eip155ChainReference};
+use r402_evm::{Eip155ExactFacilitator, Eip155UptoFacilitator};
 use r402_extensions::{
     BUILDER_CODE, BuilderCodeFacilitatorConfig, BuilderCodeFacilitatorExtension,
     ERC20_APPROVAL_GAS_SPONSORING_KEY,
 };
-use r402_facilitator::{InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache};
-use r402_protocol::ExactScheme;
-use r402_protocol::scheme::SchemeSlug;
+use r402_facilitator::{
+    DynFacilitator, InMemoryPendingSettlementStore, PendingSettlementStore, SettlementCache,
+};
+use r402_protocol::{ExactScheme, UptoScheme, scheme::SchemeSlug};
 use url::Url;
 
 use super::{FacilitatorMap, scheme_not_enabled};
@@ -24,7 +25,7 @@ use crate::config::{
 };
 use crate::error::Error;
 
-/// Process-wide EVM exact construction state.
+/// Process-wide EVM exact/upto construction state.
 pub(super) struct Prepare {
     cache: SettlementCache,
     pending: Arc<dyn PendingSettlementStore>,
@@ -63,6 +64,7 @@ impl Prepare {
         for name in &network.schemes {
             match name.as_str() {
                 ExactScheme::VALUE => self.register_exact(map, &provider, network)?,
+                UptoScheme::VALUE => self.register_upto(map, &provider, network)?,
                 _ => return Err(scheme_not_enabled(name, &network.chain_id)),
             }
         }
@@ -94,12 +96,39 @@ impl Prepare {
         if let Some(extension) = self.settings.builder_code.clone() {
             facilitator = facilitator.with_builder_code(extension);
         }
-        let slug = SchemeSlug::new(
-            network.chain_id.clone(),
-            CompactString::from(ExactScheme::VALUE),
-        );
-        map.insert(slug, Arc::new(facilitator))
+        insert_scheme(map, network, ExactScheme::VALUE, Arc::new(facilitator))
     }
+
+    fn register_upto(
+        &self,
+        map: &mut FacilitatorMap,
+        provider: &Arc<Eip155ChainProvider>,
+        network: &EvmNetwork,
+    ) -> Result<(), Error> {
+        // Upto has no `with_pending_store`; settle retries are cache-only.
+        let mut facilitator =
+            Eip155UptoFacilitator::with_settlement_cache(Arc::clone(provider), self.cache.clone());
+        if let Some(secs) = self.settings.clock_skew_secs {
+            facilitator = facilitator.with_clock_skew_tolerance(secs);
+        }
+        if self.settings.erc20 {
+            facilitator = facilitator.with_erc20_approval_gas_sponsoring();
+        }
+        if let Some(extension) = self.settings.builder_code.clone() {
+            facilitator = facilitator.with_builder_code(extension);
+        }
+        insert_scheme(map, network, UptoScheme::VALUE, Arc::new(facilitator))
+    }
+}
+
+fn insert_scheme(
+    map: &mut FacilitatorMap,
+    network: &EvmNetwork,
+    name: &'static str,
+    handler: Arc<dyn DynFacilitator>,
+) -> Result<(), Error> {
+    let slug = SchemeSlug::new(network.chain_id.clone(), CompactString::from(name));
+    map.insert(slug, handler)
 }
 
 impl Settings {

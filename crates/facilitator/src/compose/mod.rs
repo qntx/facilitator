@@ -104,8 +104,8 @@ impl Facilitator for FacilitatorMap {
 
 /// Construct in-process scheme handlers from `config`.
 ///
-/// Uses `with_settlement_cache` as a constructor (never `try_new`) so every
-/// EVM exact handler shares the process [`r402_facilitator::SettlementCache`].
+/// Uses `with_settlement_cache` as a constructor (never `try_new`) so EVM
+/// exact and upto handlers share the process [`r402_facilitator::SettlementCache`].
 /// A listed scheme without a constructor in this build is an error. The
 /// returned map is nonempty.
 ///
@@ -270,10 +270,10 @@ mod tests {
     #[test]
     fn listed_scheme_without_constructor_is_startup_error() {
         let chain = ChainId::from_str("eip155:84532").expect("caip-2");
-        let err = scheme_not_enabled("upto", &chain);
+        let err = scheme_not_enabled("auth-capture", &chain);
         assert!(
             err.to_string()
-                .contains("scheme 'upto' on eip155:84532 is not enabled in this build"),
+                .contains("scheme 'auth-capture' on eip155:84532 is not enabled in this build"),
             "got {err}"
         );
     }
