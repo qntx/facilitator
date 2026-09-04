@@ -35,7 +35,7 @@ keeta = ["dep:r402-keeta", "r402-keeta/facilitator", "dep:base64"]
 tvm = ["dep:r402-tvm", "r402-tvm/facilitator"]
 stellar = ["dep:r402-stellar", "r402-stellar/facilitator"]
 concordium = ["dep:r402-concordium", "r402-concordium/facilitator"]
-experimental-tron = []
+experimental-tron = ["dep:r402-tron", "r402-tron/facilitator", "dep:alloy-signer-local"]
 telemetry = [
     "r402-evm?/telemetry",
     "r402-svm?/telemetry",
@@ -48,6 +48,7 @@ telemetry = [
     "r402-tvm?/telemetry",
     "r402-stellar?/telemetry",
     "r402-concordium?/telemetry",
+    "r402-tron?/telemetry",
 ]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "r402-facilitator/metrics"]
 
@@ -88,6 +89,7 @@ r402-keeta = { version = "0.19.1", path = "../../../r402/crates/r402-keeta", def
 r402-tvm = { version = "0.19.1", path = "../../../r402/crates/r402-tvm", default-features = false, optional = true }
 r402-stellar = { version = "0.19.1", path = "../../../r402/crates/r402-stellar", default-features = false, optional = true }
 r402-concordium = { version = "0.19.1", path = "../../../r402/crates/r402-concordium", default-features = false, optional = true }
+r402-tron = { version = "0.19.1", path = "../../../r402/crates/r402-tron", default-features = false, optional = true }
 solana-keypair = { workspace = true, optional = true }
 
 [dev-dependencies]

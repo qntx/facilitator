@@ -18,6 +18,8 @@ mod near;
 mod stellar;
 #[cfg(feature = "svm")]
 mod svm;
+#[cfg(feature = "experimental-tron")]
+mod tron;
 #[cfg(feature = "tvm")]
 mod tvm;
 #[cfg(feature = "xrpl")]
@@ -36,7 +38,8 @@ use compact_str::CompactString;
     feature = "keeta",
     feature = "tvm",
     feature = "stellar",
-    feature = "concordium"
+    feature = "concordium",
+    feature = "experimental-tron"
 ))]
 use r402_facilitator::SettlementCache;
 use r402_facilitator::{DynFacilitator, Facilitator};
@@ -143,8 +146,8 @@ impl Facilitator for FacilitatorMap {
 /// EVM exact/upto and SVM exact use `with_settlement_cache` as a constructor
 /// (never `try_new`) so they share the process
 /// [`r402_facilitator::SettlementCache`]. Hedera, AVM, Aptos, Keeta, TVM,
-/// Stellar, and Concordium exact share that cache too. NEAR and XRPL use
-/// private cache types (one per process). SVM upto uses `new`,
+/// Stellar, Concordium, and Tron exact share that cache too. NEAR and XRPL
+/// use private cache types (one per process). SVM upto uses `new`,
 /// `with_storage`, and `with_pending_store` (no settlement-cache constructor;
 /// r402 0.19.1 has no rent-cleanup manager). Auth-capture uses
 /// `try_new(provider)` only. Batch-settlement uses `with_store` with a
@@ -170,7 +173,8 @@ pub async fn build(
         feature = "keeta",
         feature = "tvm",
         feature = "stellar",
-        feature = "concordium"
+        feature = "concordium",
+        feature = "experimental-tron"
     ))]
     let cache = SettlementCache::new();
     #[cfg(any(feature = "evm", feature = "svm"))]
@@ -196,7 +200,8 @@ pub async fn build(
             feature = "keeta",
             feature = "tvm",
             feature = "stellar",
-            feature = "concordium"
+            feature = "concordium",
+            feature = "experimental-tron"
         ))
     ))]
     drop(cache);
@@ -256,6 +261,10 @@ pub async fn build(
             Network::Concordium(net) => {
                 concordium::register(&mut map, net, config, lookup, &cache).await?;
             }
+            #[cfg(feature = "experimental-tron")]
+            Network::Tron(net) => {
+                tron::register(&mut map, net, config, lookup, &cache)?;
+            }
         }
     }
     #[cfg(feature = "evm")]
@@ -275,7 +284,8 @@ pub async fn build(
     feature = "keeta",
     feature = "tvm",
     feature = "stellar",
-    feature = "concordium"
+    feature = "concordium",
+    feature = "experimental-tron"
 ))]
 pub(super) fn named_secret(
     config: &Config,

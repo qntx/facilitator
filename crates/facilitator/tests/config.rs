@@ -923,6 +923,99 @@ schemes = ["exact"]
     );
 }
 
+#[cfg(not(feature = "experimental-tron"))]
+#[test]
+fn compiled_out_tron_names_feature() {
+    let raw = r#"
+[signer.tron_hot]
+source = "env"
+env = "TRON_KEY"
+[network."tron:0x2b6653dc"]
+rpc = "https://api.trongrid.io"
+signer = "tron_hot"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string().contains("compiled-out family 'tron'"),
+        "got {err}"
+    );
+    assert!(
+        err.to_string().contains("--features experimental-tron"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "experimental-tron")]
+#[test]
+fn tron_requires_exactly_one_rpc() {
+    let raw = r#"
+[signer.tron_hot]
+source = "env"
+env = "TRON_KEY"
+[network."tron:0x2b6653dc"]
+signer = "tron_hot"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("exactly one of `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "experimental-tron")]
+#[test]
+fn tron_rpc_and_rpc_env_are_exclusive() {
+    let raw = r#"
+[signer.tron_hot]
+source = "env"
+env = "TRON_KEY"
+[network."tron:0x2b6653dc"]
+rpc = "http://127.0.0.1:1"
+rpc_env = "TRON_RPC"
+signer = "tron_hot"
+schemes = ["exact"]
+"#;
+    let err = parse_config_toml(raw).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("exactly one of `rpc` or `rpc_env`"),
+        "got {err}"
+    );
+}
+
+#[cfg(feature = "experimental-tron")]
+#[test]
+fn tron_parses_rpc() {
+    let raw = r#"
+[signer.tron_hot]
+source = "env"
+env = "TRON_KEY"
+[network."tron:0x2b6653dc"]
+rpc = "http://127.0.0.1:1"
+signer = "tron_hot"
+schemes = ["exact"]
+"#;
+    let cfg = parse_config_toml(raw).expect("parse tron");
+    let tron = cfg.networks.iter().find_map(|net| {
+        if let Network::Tron(tron) = net {
+            Some(tron)
+        } else {
+            None
+        }
+    });
+    let tron = tron.expect("tron network");
+    assert_eq!(tron.signer, "tron_hot", "signer name");
+    assert_eq!(tron.schemes, ["exact".to_owned()], "exact only");
+    assert!(tron.fee_limit.is_none(), "compose default fee_limit");
+    assert!(
+        matches!(tron.rpc, facilitator::RpcConfig::Literal(_)),
+        "literal rpc"
+    );
+}
+
 #[test]
 fn casper_is_always_unhostable() {
     let raw = r#"
