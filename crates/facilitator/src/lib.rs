@@ -28,7 +28,7 @@ pub use config::{
     SvmSchemeConfig, SvmUptoConfig, load_config, parse_config_toml,
 };
 pub use error::Error;
-pub use http::{AppState, HttpTimeouts, router, router_with_timeouts};
+pub use http::{AppState, HttpTimeouts, router, router_from_config, router_with_timeouts};
 pub use metrics::{MetricsHandle, metrics_router};
 pub use secrets::{KeyEncoding, SecretSource};
 

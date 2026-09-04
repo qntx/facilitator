@@ -128,9 +128,8 @@ async fn settle_inner(
 fn finish_verify(metric: &mut VerifyMetric, resp: &VerifyResponse) -> Response {
     let result = VerifyResult::from_response(resp);
     metric.finish(result);
-    let status = verify_http_status(resp);
-    record_outcome(status, result.as_str());
-    protocol_json(status, resp, resp.extension_responses())
+    record_outcome(StatusCode::OK, result.as_str());
+    protocol_json(StatusCode::OK, resp, resp.extension_responses())
 }
 
 fn finish_settle(metric: &mut SettleMetric, resp: &SettleResponse) -> Response {

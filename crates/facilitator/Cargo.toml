@@ -46,6 +46,7 @@ r402-facilitator = { version = "0.19.1", path = "../../../r402/crates/r402-facil
 r402-protocol = { version = "0.19.1", path = "../../../r402/crates/r402-protocol" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+subtle = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }

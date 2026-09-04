@@ -23,8 +23,8 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use facilitator::{
-    AppState, FacilitatorMap, HttpTimeouts, MetricsHandle, metrics_router, router,
-    router_with_timeouts,
+    AppState, FacilitatorMap, HttpConfig, HttpTimeouts, MetricsHandle, metrics_router, router,
+    router_from_config, router_with_timeouts,
 };
 use http_body_util::BodyExt;
 use r402_facilitator::Facilitator;
@@ -289,6 +289,14 @@ async fn transport_error_is_502() {
 }
 
 #[tokio::test]
+async fn settle_transport_error_is_502() {
+    let app = router(AppState::new(Arc::new(TransportFail)));
+    let (status, json) = send(app, json_req("POST", "/settle", v2_body())).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "Transport");
+    assert_eq!(json["error"], "facilitator transport", "body");
+}
+
+#[tokio::test]
 async fn bearer_missing_on_supported_is_401() {
     let app = router(AppState::new(Arc::new(FacilitatorMap::new())).with_bearer("secret"));
     let req = Request::builder()
@@ -327,6 +335,19 @@ async fn bearer_correct_token_allows_supported() {
     let (status, json) = send(app, req).await;
     assert_eq!(status, StatusCode::OK, "authorized");
     assert!(json["kinds"].as_array().expect("kinds").is_empty(), "kinds");
+}
+
+#[tokio::test]
+async fn bearer_scheme_is_case_insensitive() {
+    let app = router(AppState::new(Arc::new(FacilitatorMap::new())).with_bearer("secret"));
+    let req = Request::builder()
+        .method("GET")
+        .uri("/supported")
+        .header("authorization", "bearer secret")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(app, req).await;
+    assert_eq!(status, StatusCode::OK, "lowercase bearer");
 }
 
 #[tokio::test]
@@ -427,4 +448,110 @@ async fn metrics_listen_exposes_metrics() {
         .unwrap();
     let (status, _) = send(app, req).await;
     assert_eq!(status, StatusCode::OK, "metrics listen");
+}
+
+async fn acao(app: axum::Router, origin: &str) -> Option<String> {
+    let req = Request::builder()
+        .method("GET")
+        .uri("/healthz")
+        .header("origin", origin)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.expect("oneshot");
+    response
+        .headers()
+        .get("access-control-allow-origin")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+}
+
+#[tokio::test]
+async fn cors_empty_allowlist_omits_acao() {
+    let http = HttpConfig::default();
+    assert!(http.cors_origins.is_empty(), "default empty");
+    let app =
+        router_from_config(AppState::new(Arc::new(FacilitatorMap::new())), &http).expect("router");
+    assert_eq!(
+        acao(app, "https://evil.example").await,
+        None,
+        "no CORS layer"
+    );
+}
+
+#[tokio::test]
+async fn cors_allowlist_echoes_allowed_origin() {
+    let http = HttpConfig {
+        cors_origins: vec!["https://app.example".to_owned()],
+        ..HttpConfig::default()
+    };
+    let app =
+        router_from_config(AppState::new(Arc::new(FacilitatorMap::new())), &http).expect("router");
+    assert_eq!(
+        acao(app, "https://app.example").await.as_deref(),
+        Some("https://app.example"),
+        "allowlisted origin"
+    );
+}
+
+#[tokio::test]
+async fn cors_allowlist_omits_disallowed_origin() {
+    let http = HttpConfig {
+        cors_origins: vec!["https://app.example".to_owned()],
+        ..HttpConfig::default()
+    };
+    let app =
+        router_from_config(AppState::new(Arc::new(FacilitatorMap::new())), &http).expect("router");
+    assert_eq!(
+        acao(app, "https://evil.example").await,
+        None,
+        "disallowed origin"
+    );
+}
+
+#[tokio::test]
+async fn cors_preflight_allows_authorization_and_content_type() {
+    let http = HttpConfig {
+        cors_origins: vec!["https://app.example".to_owned()],
+        ..HttpConfig::default()
+    };
+    let app =
+        router_from_config(AppState::new(Arc::new(FacilitatorMap::new())), &http).expect("router");
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/verify")
+        .header("origin", "https://app.example")
+        .header("access-control-request-method", "POST")
+        .header(
+            "access-control-request-headers",
+            "authorization,content-type",
+        )
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.expect("oneshot");
+    assert_eq!(response.status(), StatusCode::OK, "preflight");
+    let headers = response.headers();
+    let origin = headers
+        .get("access-control-allow-origin")
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(origin, Some("https://app.example"), "origin");
+    let allow_headers = headers
+        .get("access-control-allow-headers")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    assert!(
+        allow_headers.contains("authorization"),
+        "authorization: {allow_headers}"
+    );
+    assert!(
+        allow_headers.contains("content-type"),
+        "content-type: {allow_headers}"
+    );
+    let allow_methods = headers
+        .get("access-control-allow-methods")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    assert!(allow_methods.contains("post"), "POST: {allow_methods}");
+    assert!(allow_methods.contains("get"), "GET: {allow_methods}");
 }
