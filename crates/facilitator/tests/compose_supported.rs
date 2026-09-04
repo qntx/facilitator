@@ -29,6 +29,10 @@ fn lookup(key: &str) -> Option<String> {
 }
 
 fn evm_doc(scheme_evm: &str, extra_network: &str) -> String {
+    evm_doc_with_schemes(scheme_evm, extra_network, r#"["exact"]"#)
+}
+
+fn evm_doc_with_schemes(scheme_evm: &str, extra_network: &str, schemes: &str) -> String {
     format!(
         r#"
 [http]
@@ -44,7 +48,7 @@ env = "FACILITATOR_EVM_KEY"
 [network."eip155:84532"]
 rpc = ["http://127.0.0.1:1"]
 signers = ["evm_hot"]
-schemes = ["exact"]
+schemes = {schemes}
 receipt_timeout_secs = 20
 {extra_network}
 "#
@@ -127,14 +131,45 @@ builder_code = { builder_code = "wallet", service_code = "svc" }"#,
 }
 
 #[cfg(feature = "evm")]
+#[tokio::test]
+async fn exact_and_upto_concat_kinds_and_keep_upto_extra() {
+    let cfg =
+        parse_config_toml(&evm_doc_with_schemes("", "", r#"["exact", "upto"]"#)).expect("parse");
+    let map = build(&cfg, &lookup).expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 2, "exact then upto");
+    assert_exact_kind_at(&supported, 0, "eip155:84532");
+    assert_upto_kind_at(&supported, 1, "eip155:84532");
+    let signers = supported
+        .signers
+        .get("eip155:*")
+        .expect("union under eip155:*");
+    assert_eq!(
+        signers.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),
+        [ANVIL_ADDR],
+        "deduped address"
+    );
+}
+
+#[cfg(feature = "evm")]
+#[tokio::test]
+async fn upto_only_supported_passes_through_extra() {
+    let cfg = parse_config_toml(&evm_doc_with_schemes("", "", r#"["upto"]"#)).expect("parse");
+    let map = build(&cfg, &lookup).expect("construct");
+    let supported = Facilitator::supported(&map).await.expect("supported");
+    assert_eq!(supported.kinds.len(), 1, "upto only");
+    assert_upto_kind_at(&supported, 0, "eip155:84532");
+}
+
+#[cfg(feature = "evm")]
 #[test]
-fn listed_upto_without_constructor_is_startup_error() {
-    let raw = evm_doc("", "").replace("schemes = [\"exact\"]", "schemes = [\"exact\", \"upto\"]");
-    let cfg = parse_config_toml(&raw).expect("upto is a known EVM name");
-    let err = build(&cfg, &lookup).expect_err("upto has no constructor in this PR");
+fn listed_auth_capture_without_constructor_is_startup_error() {
+    let raw = evm_doc_with_schemes("", "", r#"["exact", "auth-capture"]"#);
+    let cfg = parse_config_toml(&raw).expect("auth-capture is a known EVM name");
+    let err = build(&cfg, &lookup).expect_err("auth-capture has no constructor in this PR");
     assert!(
         err.to_string()
-            .contains("scheme 'upto' on eip155:84532 is not enabled in this build"),
+            .contains("scheme 'auth-capture' on eip155:84532 is not enabled in this build"),
         "got {err}"
     );
 }
@@ -186,18 +221,22 @@ fn invalid_secp256k1_key_is_startup_error() {
 
 #[cfg(feature = "evm")]
 #[test]
-fn example_toml_stays_exact_only() {
+fn example_toml_lists_exact_and_upto() {
     let raw = std::fs::read_to_string(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config.example.toml"),
     )
     .expect("example");
     assert!(
-        !raw.contains("upto"),
-        "config.example.toml must not list upto until PR 4"
+        raw.contains(r#"schemes = ["exact", "upto"]"#),
+        "config.example.toml must list exact+upto"
     );
     let cfg = parse_config_toml(&raw).expect("example parses");
     for network in &cfg.networks {
-        assert_eq!(network.schemes(), &["exact".to_owned()], "exact only");
+        assert_eq!(
+            network.schemes(),
+            &["exact".to_owned(), "upto".to_owned()],
+            "exact+upto"
+        );
     }
 }
 
@@ -212,4 +251,17 @@ fn assert_exact_kind_at(supported: &SupportedResponse, index: usize, network: &s
     assert_eq!(kind.scheme.as_str(), "exact", "scheme");
     assert_eq!(kind.network.as_str(), network, "network");
     assert_eq!(kind.extra, None, "exact extra is absent");
+}
+
+fn assert_upto_kind_at(supported: &SupportedResponse, index: usize, network: &str) {
+    let kind = &supported.kinds[index];
+    assert_eq!(kind.x402_version, 2, "V2");
+    assert_eq!(kind.scheme.as_str(), "upto", "scheme");
+    assert_eq!(kind.network.as_str(), network, "network");
+    let extra = kind
+        .extra
+        .as_ref()
+        .expect("upto extra must not be stripped");
+    assert_eq!(extra["assetTransferMethod"], "permit2", "Permit2 method");
+    assert_eq!(extra["facilitatorAddress"], ANVIL_ADDR, "first signer");
 }

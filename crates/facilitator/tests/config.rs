@@ -49,7 +49,7 @@ receipt_timeout_secs = 20
 }
 
 #[test]
-fn example_toml_parses_evm_exact_only() {
+fn example_toml_parses_evm_exact_and_upto() {
     let cfg = parse_config_toml(&repo_file("config.example.toml")).expect("example parses");
     assert_eq!(cfg.networks.len(), 2, "base sepolia + base");
     let ids: Vec<String> = cfg
@@ -64,7 +64,11 @@ fn example_toml_parses_evm_exact_only() {
     );
     for network in &cfg.networks {
         assert_eq!(network.chain_id().namespace(), "eip155", "evm only");
-        assert_eq!(network.schemes(), &["exact".to_owned()], "exact only");
+        assert_eq!(
+            network.schemes(),
+            &["exact".to_owned(), "upto".to_owned()],
+            "exact+upto"
+        );
     }
 }
 
@@ -85,15 +89,15 @@ fn full_example_parses_as_documentation() {
         .iter()
         .any(|net| net.chain_id().namespace() == "solana");
     assert!(has_solana, "full example documents SVM");
-    let evm_exact_only = cfg.networks.iter().filter_map(|net| match net {
+    let evm_schemes = cfg.networks.iter().filter_map(|net| match net {
         Network::Evm(evm) => Some(evm.schemes.as_slice()),
         Network::Svm(_) => None,
     });
-    for schemes in evm_exact_only {
+    for schemes in evm_schemes {
         assert_eq!(
             schemes,
-            ["exact".to_owned()].as_slice(),
-            "full example EVM stays exact"
+            ["exact".to_owned(), "upto".to_owned()].as_slice(),
+            "full example EVM is exact+upto"
         );
     }
 }
@@ -160,7 +164,7 @@ fn unknown_scheme_name_fails() {
 }
 
 #[test]
-fn unimplemented_upto_name_does_not_fail() {
+fn upto_scheme_name_is_known() {
     let raw = evm_doc("").replace("schemes = [\"exact\"]", "schemes = [\"exact\", \"upto\"]");
     parse_config_toml(&raw).expect("upto is a known EVM scheme name");
 }

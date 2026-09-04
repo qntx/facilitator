@@ -37,7 +37,7 @@ rpc = ["https://sepolia.base.org"]
 # rpc = [{ http = "https://sepolia.base.org", rate_limit = 50 }]
 # rpc_env = "BASE_SEPOLIA_RPC"   # mutually exclusive with `rpc`; value is one http(s) URL
 signers = ["evm_hot"]
-schemes = ["exact"]
+schemes = ["exact", "upto"]
 eip1559 = true
 flashblocks = false
 receipt_timeout_secs = 20
@@ -45,5 +45,5 @@ receipt_timeout_secs = 20
 [network."eip155:8453"]
 rpc = ["https://mainnet.base.org"]
 signers = ["evm_hot"]
-schemes = ["exact"]
+schemes = ["exact", "upto"]
 receipt_timeout_secs = 20

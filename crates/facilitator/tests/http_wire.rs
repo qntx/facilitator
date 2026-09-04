@@ -28,7 +28,9 @@ use facilitator::{
 };
 use http_body_util::BodyExt;
 use r402_facilitator::Facilitator;
-use r402_protocol::error::{FacilitatorError, FacilitatorTransportKind};
+use r402_protocol::error::{
+    ErrorReason, FacilitatorError, FacilitatorTransportKind, VerificationError,
+};
 use r402_protocol::payment::{
     SettleRequest, SettleResponse, SupportedResponse, VerifyRequest, VerifyResponse,
 };
@@ -338,6 +340,90 @@ async fn onchain_settle_is_200_invalid_transaction_state() {
     assert_eq!(json["errorReason"], "invalid_transaction_state", "reason");
     assert_eq!(json["transaction"], "", "no hash");
     assert_eq!(json["network"], "eip155:84532", "request network");
+}
+
+struct Permit2Err;
+
+impl Facilitator for Permit2Err {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(VerificationError::Permit2AllowanceRequired.into()))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(VerificationError::Permit2AllowanceRequired.into()))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(SupportedResponse::new()))
+    }
+}
+
+#[tokio::test]
+async fn permit2_allowance_required_err_is_412() {
+    let app = router(AppState::new(Arc::new(Permit2Err)));
+    let (status, json) = send(app, json_req("POST", "/verify", v2_body())).await;
+    assert_eq!(status, StatusCode::PRECONDITION_FAILED, "Err path is 412");
+    assert_eq!(json["isValid"], false, "invalid");
+    assert_eq!(
+        json["invalidReason"], "permit2_allowance_required",
+        "reason"
+    );
+}
+
+#[tokio::test]
+async fn permit2_allowance_required_settle_err_is_200() {
+    let app = router(AppState::new(Arc::new(Permit2Err)));
+    let (status, json) = send(app, json_req("POST", "/settle", v2_body())).await;
+    assert_eq!(status, StatusCode::OK, "412 is verify-only");
+    assert_eq!(json["success"], false, "failure");
+    assert_eq!(json["errorReason"], "permit2_allowance_required", "reason");
+}
+
+struct Permit2OkInvalid;
+
+impl Facilitator for Permit2OkInvalid {
+    fn verify(
+        &self,
+        _request: VerifyRequest,
+    ) -> impl Future<Output = Result<VerifyResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(VerifyResponse::invalid(
+            None,
+            ErrorReason::Permit2AllowanceRequired,
+        )))
+    }
+
+    fn settle(
+        &self,
+        _request: SettleRequest,
+    ) -> impl Future<Output = Result<SettleResponse, FacilitatorError>> + Send {
+        std::future::ready(Err(FacilitatorError::aborted("test", "settle unused")))
+    }
+
+    fn supported(
+        &self,
+    ) -> impl Future<Output = Result<SupportedResponse, FacilitatorError>> + Send {
+        std::future::ready(Ok(SupportedResponse::new()))
+    }
+}
+
+#[tokio::test]
+async fn permit2_allowance_required_ok_invalid_is_200() {
+    let app = router(AppState::new(Arc::new(Permit2OkInvalid)));
+    let (status, json) = send(app, json_req("POST", "/verify", v2_body())).await;
+    assert_eq!(status, StatusCode::OK, "Ok(Invalid) is not 412");
+    assert_eq!(json["isValid"], false, "invalid");
+    assert_eq!(
+        json["invalidReason"], "permit2_allowance_required",
+        "reason"
+    );
 }
 
 #[tokio::test]
