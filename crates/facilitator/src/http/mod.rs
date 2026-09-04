@@ -34,7 +34,7 @@ const OPS_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct AppState {
     /// In-process scheme handlers.
     facilitator: Arc<dyn DynFacilitator>,
-    /// Readiness: nonempty constructed map (PR 3+) and bound server.
+    /// Readiness: nonempty constructed map.
     ready: bool,
     /// Shared bearer for protocol routes. `None` = auth off.
     bearer: Option<Arc<str>>,

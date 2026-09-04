@@ -2,36 +2,35 @@
 
 all: fmt clippy-fix
 
-# Build the project with all features enabled in release mode
+# Build the project in release mode
 build:
-    cargo build --workspace --release --all-features
+    cargo build --workspace --release
 
 # Check the project for compilation errors without producing binaries
 check:
-    cargo check --workspace --all-features
+    cargo check --workspace
 
 # Update dependencies to their latest compatible versions
 update:
     cargo update
 
-# Run the project with all features enabled in release mode
+# Run the project in release mode
 run:
-    cargo run --release --all-features
+    cargo run --release
 
-# Run all tests with all features enabled
+# Run all tests
 test:
-    cargo test --workspace --all-features
+    cargo test --workspace
 
-# Run benchmarks with all features enabled
+# Run benchmarks
 bench:
-    cargo bench --all-features
+    cargo bench
 
 # Run Clippy linter with nightly toolchain (check only, for CI)
 # Uses workspace lints from Cargo.toml
 clippy:
     cargo +nightly clippy --workspace \
         --all-targets \
-        --all-features \
         -- -D warnings
 
 # Run Clippy linter with auto-fix (for development)
@@ -39,15 +38,14 @@ clippy-fix:
     cargo +nightly clippy --workspace \
         --fix \
         --all-targets \
-        --all-features \
         --allow-dirty \
         --allow-staged \
         -- -D warnings
 
-# Format the code using rustfmt with nightly toolchain
+# Format facilitator only; rustfmt --all also formats path-dep r402.
 fmt:
-    cargo +nightly fmt
+    cargo +nightly fmt --package facilitator
 
 # Generate documentation for all crates and open it in the browser
 doc:
-    cargo +nightly doc --all-features --no-deps --open
+    cargo +nightly doc --no-deps --open
