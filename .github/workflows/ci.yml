@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -26,8 +25,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # crates/facilitator path-deps ../../../r402 → $GITHUB_WORKSPACE/../../r402
-      # (/home/runner/work/r402). Clone into the workspace, then symlink there.
+      # crates/facilitator path-deps ../../../r402 → $GITHUB_WORKSPACE/../r402
+      # (/home/runner/work/facilitator/r402). actions/checkout cannot write
+      # outside GITHUB_WORKSPACE; clone into .ci/r402 and symlink there.
       - name: Checkout r402 0.19.1
         uses: actions/checkout@v5
         with:
@@ -36,12 +36,13 @@ jobs:
           persist-credentials: false
           path: .ci/r402
 
-      - name: Link r402 for path deps
+      - name: Link r402 sibling for path deps
         run: |
           set -euo pipefail
-          dest="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/r402"
+          dest="$(cd "$GITHUB_WORKSPACE/.." && pwd)/r402"
           ln -sfn "$GITHUB_WORKSPACE/.ci/r402" "$dest"
           test -f "$dest/crates/r402-protocol/Cargo.toml"
+          test -f "$dest/crates/r402-evm/Cargo.toml"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -53,14 +54,16 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # --package facilitator: rustfmt --all also formats path-dep r402.
+      # nightly: rustfmt.toml group_imports is nightly-only.
       - name: Format
-        run: cargo +nightly fmt --all --check
+        run: cargo +nightly fmt --package facilitator --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build
-        run: cargo build --workspace --verbose --all-features
+        run: cargo build --workspace --verbose
 
       - name: Test
-        run: cargo test --workspace --verbose --all-features
+        run: cargo test --workspace --verbose

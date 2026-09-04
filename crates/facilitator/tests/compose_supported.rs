@@ -265,8 +265,6 @@ async fn exact_upto_and_batch_settlement_concat_kinds() {
     assert_batch_settlement_kind_at(&supported, 2, "eip155:84532");
 }
 
-
-
 #[cfg(feature = "svm")]
 #[tokio::test]
 async fn svm_exact_supported_passes_through_feepayer_and_signers() {
