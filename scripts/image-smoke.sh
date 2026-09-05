@@ -32,6 +32,14 @@ docker run -d --name "$NAME" --platform linux/amd64 \
   -e FACILITATOR_HTTP_METRICS_LISTEN=0.0.0.0:9090 \
   -p 127.0.0.1:${HTTP}:8080 -p 127.0.0.1:${METRICS}:9090 \
   "$IMAGE" >/dev/null
+run_user=$(docker inspect -f '{{.Config.User}}' "$NAME")
+case "$run_user" in
+  65532|65532:65532) ;;
+  *)
+    echo "image-smoke: container User=$run_user want 65532" >&2
+    exit 1
+    ;;
+esac
 
 up=0
 for _ in $(seq 1 60); do

@@ -42,7 +42,7 @@ docker compose up --build
 # Orb: docker-compose up --build
 ```
 
-Do not run `ghcr.io/qntx/facilitator:0.7.0` (USER 65532 cannot traverse `/etc/facilitator`). Build from this Dockerfile until `0.7.1` is published. Then pin `:0.7.1` or a digest — not `:latest` / `:0` / `:0.7`.
+Image: `ghcr.io/qntx/facilitator:0.7.1`. Pin that tag or a digest — not `:latest` / `:0` / `:0.7`. Do not run `:0.7.0` (USER 65532 cannot traverse `/etc/facilitator`). Until the `v0.7.1` GHCR tag exists, `docker compose up --build`.
 
 ## API
 
@@ -103,7 +103,7 @@ Runtime is [`gcr.io/distroless/cc-debian12:nonroot`](https://github.com/GoogleCo
 - Protocol `:8080` and metrics `:9090` are separate. Do not publish them on a public interface. [`deploy/compose.yaml`](deploy/compose.yaml) binds `127.0.0.1`. Put Caddy (or equivalent) in front. Enable `[http.auth]` bearer if the protocol port is reachable beyond localhost.
 - One replica. Settlement cache is in-memory. Do not `--scale`. k8s `strategy: Recreate`.
 - Secrets: `FACILITATOR_EVM_KEY` or a file source. Never TOML literals (startup error).
-- `ghcr.io/qntx/facilitator:0.7.0` is known-bad. Build from the Dockerfile until `0.7.1`.
+- Pin `ghcr.io/qntx/facilitator:0.7.1` or a digest. `:0.7.0` is known-bad.
 
 Compose: [`compose.yaml`](compose.yaml) (`docker compose` / Orb `docker-compose`), SVM overlay [`compose.svm.yaml`](compose.svm.yaml), TLS profile [`deploy/compose.yaml`](deploy/compose.yaml).
 

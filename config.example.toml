@@ -1,5 +1,6 @@
-# config.example.toml — x402 facilitator 0.7 (r402 0.20)
+# config.example.toml — x402 facilitator 0.7.1 (r402 0.20)
 # Secrets: env or file. Literals for private keys are a startup error.
+# Public protocol: uncomment [http.auth] and set FACILITATOR_API_TOKEN.
 
 [http]
 listen = "127.0.0.1:8080"
@@ -42,6 +43,7 @@ eip1559 = true
 flashblocks = false
 receipt_timeout_secs = 20
 
+# Base mainnet. Remove this table unless the hot wallet is funded and intended.
 [network."eip155:8453"]
 rpc = ["https://mainnet.base.org"]
 signers = ["evm_hot"]
