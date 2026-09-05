@@ -20,8 +20,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 
-COPY --from=builder /usr/local/bin/facilitator /usr/bin/facilitator
-COPY --chmod=644 config.example.toml /etc/facilitator/config.toml
+COPY --from=builder --chown=65532:65532 /usr/local/bin/facilitator /usr/bin/facilitator
+# Do not COPY --chmod=644 into a new directory: BuildKit applies 0644 to the
+# directory as well (no +x), so USER 65532 cannot traverse /etc/facilitator.
+COPY --chown=65532:65532 config.example.toml /etc/facilitator/config.toml
 
 # In-container bind. Host example config stays 127.0.0.1; compose/k8s overlay the same vars.
 ENV FACILITATOR_HTTP_LISTEN=0.0.0.0:8080
