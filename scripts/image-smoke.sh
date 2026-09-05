@@ -9,6 +9,7 @@ METRICS=19090
 # Anvil account 0. Same constant as crates/facilitator/tests/compose_supported.rs.
 # Construction-only. Do not broadcast.
 export FACILITATOR_EVM_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+export FACILITATOR_API_TOKEN=image-smoke-token
 ANVIL_ADDR=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 cleanup() {
@@ -28,6 +29,7 @@ esac
 
 docker run -d --name "$NAME" --platform linux/amd64 \
   -e FACILITATOR_EVM_KEY \
+  -e FACILITATOR_API_TOKEN \
   -e FACILITATOR_HTTP_LISTEN=0.0.0.0:8080 \
   -e FACILITATOR_HTTP_METRICS_LISTEN=0.0.0.0:9090 \
   -p 127.0.0.1:${HTTP}:8080 -p 127.0.0.1:${METRICS}:9090 \
@@ -65,13 +67,17 @@ python3 - "$HTTP" "$METRICS" "$ANVIL_ADDR" << 'PY'
 import json, subprocess, sys
 
 http, metrics, anvil = sys.argv[1], sys.argv[2], sys.argv[3]
+AUTH = {"authorization": "Bearer image-smoke-token"}
 
 
-def curl(method, url, data=None, timeout=20):
+def curl(method, url, data=None, timeout=20, headers=None):
     cmd = [
         "curl", "-sS", "-o", "/tmp/fac-smoke-body", "-w", "%{http_code}",
         "--max-time", str(timeout), "-X", method, url,
     ]
+    if headers:
+        for key, value in headers.items():
+            cmd += ["-H", f"{key}: {value}"]
     if data is not None:
         cmd += ["-H", "content-type: application/json", "--data", data]
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -101,6 +107,10 @@ must(st == 200 and j.get("status") == "ok", f"/readyz {st} {raw!r}")
 
 st, raw = curl("GET", f"http://127.0.0.1:{http}/supported")
 j = jload(raw)
+must(st == 401 and j.get("error") == "unauthorized", f"/supported unauth {st} {raw!r}")
+
+st, raw = curl("GET", f"http://127.0.0.1:{http}/supported", headers=AUTH)
+j = jload(raw)
 must(st == 200, f"/supported {st} {raw!r}")
 kinds = j.get("kinds") or []
 pairs = {(k.get("network"), k.get("scheme")) for k in kinds}
@@ -120,7 +130,7 @@ for path in ("/", "/health", "/metrics"):
     st, raw = curl("GET", f"http://127.0.0.1:{http}{path}")
     must(st == 404, f"GET {path} {st}")
 
-st, raw = curl("POST", f"http://127.0.0.1:{http}/verify", data="{")
+st, raw = curl("POST", f"http://127.0.0.1:{http}/verify", data="{", headers=AUTH)
 j = jload(raw)
 must(st == 400 and j.get("error") == "invalid request body", f"unparseable {st} {raw!r}")
 
@@ -128,6 +138,7 @@ st, raw = curl(
     "POST",
     f"http://127.0.0.1:{http}/verify",
     data='{"x402Version":1,"paymentPayload":{},"paymentRequirements":{}}',
+    headers=AUTH,
 )
 j = jload(raw)
 must(
@@ -139,6 +150,7 @@ st, raw = curl(
     "POST",
     f"http://127.0.0.1:{http}/verify",
     data='{"x402Version":2,"paymentPayload":{},"paymentRequirements":{"network":"eip155:84532"}}',
+    headers=AUTH,
 )
 j = jload(raw)
 must(
@@ -150,6 +162,7 @@ st, raw = curl(
     "POST",
     f"http://127.0.0.1:{http}/settle",
     data='{"x402Version":1,"paymentPayload":{},"paymentRequirements":{}}',
+    headers=AUTH,
 )
 j = jload(raw)
 must(

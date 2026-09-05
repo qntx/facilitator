@@ -33,6 +33,7 @@ COPY --from=builder --chown=65532:65532 /usr/local/bin/facilitator /usr/bin/faci
 COPY --from=builder --chown=65532:65532 /out/etc /etc
 
 # In-container bind. Host example config stays 127.0.0.1; compose/k8s overlay the same vars.
+# Non-loopback listen requires [http.auth] + FACILITATOR_API_TOKEN (baked example has the table).
 ENV FACILITATOR_HTTP_LISTEN=0.0.0.0:8080
 ENV FACILITATOR_HTTP_METRICS_LISTEN=0.0.0.0:9090
 

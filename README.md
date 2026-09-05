@@ -38,11 +38,12 @@ Requires **Rust 1.95**.
 
 ```bash
 export FACILITATOR_EVM_KEY=0x...
+export FACILITATOR_API_TOKEN=...
 docker compose up --build
 # Orb: docker-compose up --build
 ```
 
-Image: `ghcr.io/qntx/facilitator:0.7.1`. Pin that tag or a digest — not `:latest` / `:0` / `:0.7`. Do not run `:0.7.0` (USER 65532 cannot traverse `/etc/facilitator`). Until the `v0.7.1` GHCR tag exists, `docker compose up --build`.
+Image: `ghcr.io/qntx/facilitator:0.7.1`. Pin that tag or a digest — not `:latest` / `:0` / `:0.7`. Do not run `:0.7.0` (USER 65532 cannot traverse `/etc/facilitator`).
 
 ## API
 
@@ -55,7 +56,7 @@ Image: `ghcr.io/qntx/facilitator:0.7.1`. Pin that tag or a digest — not `:late
 | `GET` | `/readyz` | Ready when at least one kind is registered |
 | `GET` | `/metrics` | Prometheus text; **metrics listen only** |
 
-No `GET /`. Optional `[http.auth]` bearer applies to `/verify`, `/settle`, `/supported`. Ops routes are unauthenticated.
+No `GET /`. `[http.auth]` bearer applies to `/verify`, `/settle`, `/supported`. Required when `http.listen` is not loopback (Docker/k8s `0.0.0.0` overlay included). Metrics listen may be `0.0.0.0` without bearer. Ops routes stay unauthenticated.
 
 ```text
 facilitator init | validate | serve
@@ -69,6 +70,9 @@ facilitator init | validate | serve
 [`config.example.toml`](config.example.toml) (EVM) and [`config.example.full.toml`](config.example.full.toml) (EVM + SVM). Named `[signer.*]` plus per-network references. Literal private keys are a startup error.
 
 ```toml
+[http.auth]
+bearer_env = "FACILITATOR_API_TOKEN"
+
 [signer.evm_hot]
 source = "env"
 env = "FACILITATOR_EVM_KEY"
@@ -79,7 +83,7 @@ signers = ["evm_hot"]
 schemes = ["exact", "upto"]
 ```
 
-Env overlay: `FACILITATOR_HTTP_LISTEN`, `FACILITATOR_HTTP_METRICS_LISTEN`, `FACILITATOR_LOG_LEVEL`, `RUST_LOG`, `FACILITATOR_CONFIG`.
+Env overlay: `FACILITATOR_HTTP_LISTEN`, `FACILITATOR_HTTP_METRICS_LISTEN`, `FACILITATOR_LOG_LEVEL`, `RUST_LOG`, `FACILITATOR_CONFIG`. Overlay re-validates: non-loopback listen without `[http.auth]` is a startup error.
 
 ## Features
 
@@ -100,9 +104,9 @@ Runtime is [`gcr.io/distroless/cc-debian12:nonroot`](https://github.com/GoogleCo
 - Image is **linux/amd64** only. Apple Silicon / Orb: `platform: linux/amd64` is set in compose (QEMU). Build with `docker buildx` (Orb: `docker-buildx`), not legacy `docker build`. Probe with **curl**, not Python urllib, under QEMU.
 - Never `--user 0`. Image USER is 65532.
 - Compose file-mount of `config.toml` requires the host file readable by uid 65532 (`config.example.toml` is 0644). Host `0600` is `EACCES` inside the container.
-- Protocol `:8080` and metrics `:9090` are separate. Do not publish them on a public interface. [`deploy/compose.yaml`](deploy/compose.yaml) binds `127.0.0.1`. Put Caddy (or equivalent) in front. Enable `[http.auth]` bearer if the protocol port is reachable beyond localhost.
+- Protocol `:8080` and metrics `:9090` are separate. Do not publish them on a public interface. [`deploy/compose.yaml`](deploy/compose.yaml) binds host `127.0.0.1`. Put Caddy (or equivalent) in front. In-container listen is `0.0.0.0`, so `[http.auth]` and `FACILITATOR_API_TOKEN` are required.
 - One replica. Settlement cache is in-memory. Do not `--scale`. k8s `strategy: Recreate`.
-- Secrets: `FACILITATOR_EVM_KEY` or a file source. Never TOML literals (startup error).
+- Secrets: `FACILITATOR_EVM_KEY` or a file source, plus `FACILITATOR_API_TOKEN`. Never TOML literals (startup error).
 - Pin `ghcr.io/qntx/facilitator:0.7.1` or a digest. `:0.7.0` is known-bad.
 
 Compose: [`compose.yaml`](compose.yaml) (`docker compose` / Orb `docker-compose`), SVM overlay [`compose.svm.yaml`](compose.svm.yaml), TLS profile [`deploy/compose.yaml`](deploy/compose.yaml).

@@ -201,16 +201,23 @@ fn parse_networks(raw: toml::Table) -> Result<Vec<Network>, Error> {
 impl Config {
     /// Overlay `FACILITATOR_HTTP_*`, `FACILITATOR_LOG_LEVEL`, and `RUST_LOG`.
     ///
+    /// Re-validates afterwards so `FACILITATOR_HTTP_LISTEN=0.0.0.0:8080` cannot
+    /// skip the non-loopback `[http.auth]` requirement.
+    ///
     /// # Errors
     ///
-    /// Invalid socket addresses in overlay env vars.
+    /// Invalid socket addresses in overlay env vars, or post-overlay validation.
     pub fn overlay_env(&mut self) -> Result<(), Error> {
-        if let Ok(raw) = std::env::var("FACILITATOR_HTTP_LISTEN") {
+        self.overlay_from(&|key| std::env::var(key).ok())
+    }
+
+    fn overlay_from(&mut self, lookup: &impl Fn(&str) -> Option<String>) -> Result<(), Error> {
+        if let Some(raw) = lookup("FACILITATOR_HTTP_LISTEN") {
             self.http.listen = raw.parse().map_err(|err| {
                 Error::config_with(format!("invalid FACILITATOR_HTTP_LISTEN '{raw}'"), err)
             })?;
         }
-        if let Ok(raw) = std::env::var("FACILITATOR_HTTP_METRICS_LISTEN") {
+        if let Some(raw) = lookup("FACILITATOR_HTTP_METRICS_LISTEN") {
             self.http.metrics_listen = Some(raw.parse().map_err(|err| {
                 Error::config_with(
                     format!("invalid FACILITATOR_HTTP_METRICS_LISTEN '{raw}'"),
@@ -218,13 +225,13 @@ impl Config {
                 )
             })?);
         }
-        if let Ok(level) = std::env::var("FACILITATOR_LOG_LEVEL") {
+        if let Some(level) = lookup("FACILITATOR_LOG_LEVEL") {
             self.log.level = level;
         }
-        if let Ok(level) = std::env::var("RUST_LOG") {
+        if let Some(level) = lookup("RUST_LOG") {
             self.log.level = level;
         }
-        Ok(())
+        self.validate()
     }
 
     /// Resolve every signer and `rpc_env`. Does not keep secret material.
@@ -291,6 +298,12 @@ impl Config {
     }
 
     fn validate_http_auth(&self) -> Result<(), Error> {
+        if !self.http.listen.ip().is_loopback() && self.http.auth.is_none() {
+            return Err(Error::config(format!(
+                "non-loopback [http] listen {} requires [http.auth]; bind 127.0.0.1/::1 to omit bearer",
+                self.http.listen
+            )));
+        }
         let Some(auth) = &self.http.auth else {
             return Ok(());
         };
@@ -402,4 +415,60 @@ fn resolve_network_env(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod overlay_tests {
+    use super::*;
+
+    const LOOPBACK: &str = r#"
+[http]
+listen = "127.0.0.1:8080"
+settle_timeout = "30s"
+
+[signer.evm_hot]
+source = "env"
+env = "FACILITATOR_EVM_KEY"
+
+[network."eip155:84532"]
+rpc = ["https://sepolia.base.org"]
+signers = ["evm_hot"]
+schemes = ["exact"]
+receipt_timeout_secs = 20
+"#;
+
+    #[test]
+    fn overlay_unspecified_listen_without_auth_fails() {
+        let mut cfg = parse_config_toml(LOOPBACK).expect("parse");
+        let err = cfg
+            .overlay_from(&|key| {
+                (key == "FACILITATOR_HTTP_LISTEN").then(|| "0.0.0.0:8080".to_owned())
+            })
+            .expect_err("must require auth");
+        let msg = err.to_string();
+        assert!(msg.contains("non-loopback"), "got {msg}");
+        assert!(msg.contains("[http.auth]"), "got {msg}");
+    }
+
+    #[test]
+    fn overlay_unspecified_listen_with_auth_ok() {
+        let raw = format!("{LOOPBACK}\n[http.auth]\nbearer_env = \"FACILITATOR_API_TOKEN\"\n");
+        let mut cfg = parse_config_toml(&raw).expect("parse");
+        cfg.overlay_from(&|key| {
+            (key == "FACILITATOR_HTTP_LISTEN").then(|| "0.0.0.0:8080".to_owned())
+        })
+        .expect("auth present");
+        assert_eq!(
+            cfg.http.listen,
+            "0.0.0.0:8080".parse().expect("listen"),
+            "overlay applied"
+        );
+    }
+
+    #[test]
+    fn overlay_absent_keeps_loopback_without_auth() {
+        let mut cfg = parse_config_toml(LOOPBACK).expect("parse");
+        cfg.overlay_from(&|_| None).expect("no overlay");
+        assert!(cfg.http.listen.ip().is_loopback(), "listen stays loopback");
+    }
 }

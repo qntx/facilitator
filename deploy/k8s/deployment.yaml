@@ -39,6 +39,11 @@ spec:
               value: "0.0.0.0:8080"
             - name: FACILITATOR_HTTP_METRICS_LISTEN
               value: "0.0.0.0:9090"
+            - name: FACILITATOR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: facilitator-secrets
+                  key: api-token
           ports:
             - name: protocol
               containerPort: 8080

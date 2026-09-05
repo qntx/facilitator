@@ -17,6 +17,9 @@ data:
     body_limit_bytes = 262144
     metrics_listen = "0.0.0.0:9090"
 
+    [http.auth]
+    bearer_env = "FACILITATOR_API_TOKEN"
+
     [log]
     level = "info"
     format = "json"

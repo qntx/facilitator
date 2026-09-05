@@ -2,6 +2,7 @@
 # constructs both). `facilitator init` writes config.example.toml (EVM only).
 #
 # Secrets: env or file. Literals for private keys are a startup error.
+# Non-loopback listen requires [http.auth]. Set FACILITATOR_API_TOKEN.
 
 [http]
 listen = "127.0.0.1:8080"
@@ -9,6 +10,9 @@ verify_timeout = "30s"
 settle_timeout = "30s"
 body_limit_bytes = 262144
 metrics_listen = "127.0.0.1:9090"
+
+[http.auth]
+bearer_env = "FACILITATOR_API_TOKEN"
 
 [log]
 level = "info"

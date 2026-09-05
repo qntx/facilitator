@@ -1,5 +1,5 @@
 # One replica (in-memory SettlementCache). No HPA.
-# Replace facilitator-secrets.evm.key before the pod will serve.
+# Replace facilitator-secrets.evm.key and api-token before the pod will serve.
 # SVM is opt-in: solana.key in the Secret is not mounted until you add the
 # volume item in deployment.yaml and SVM tables in the ConfigMap.
 #

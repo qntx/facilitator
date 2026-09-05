@@ -1110,8 +1110,12 @@ schemes = ["exact"]
 #[test]
 fn resolve_secrets_reads_env_lookup() {
     let cfg = parse_config_toml(&repo_file("config.example.toml")).expect("parse");
-    cfg.resolve_secrets(&|key| (key == "FACILITATOR_EVM_KEY").then(|| "not-logged".to_owned()))
-        .expect("lookup supplies the env signer");
+    cfg.resolve_secrets(&|key| match key {
+        "FACILITATOR_EVM_KEY" => Some("not-logged".to_owned()),
+        "FACILITATOR_API_TOKEN" => Some("not-logged-token".to_owned()),
+        _ => None,
+    })
+    .expect("lookup supplies the env signer and bearer");
 }
 
 #[test]
@@ -1169,4 +1173,57 @@ fn http_auth_resolves_token() {
         .expect("resolves")
         .expect("present");
     assert_eq!(token, "shared-token", "trimmed");
+}
+
+#[test]
+fn packaged_example_matches_repo_example() {
+    let repo = repo_file("config.example.toml");
+    let packaged = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config.example.toml"),
+    )
+    .expect("crate example");
+    assert_eq!(
+        packaged, repo,
+        "crates/facilitator/config.example.toml must match repo root"
+    );
+}
+
+#[test]
+fn example_toml_enables_http_auth() {
+    let raw = repo_file("config.example.toml");
+    assert!(
+        raw.contains("\n[http.auth]\n"),
+        "example must ship an uncommented [http.auth] table"
+    );
+}
+
+#[test]
+fn non_loopback_listen_without_auth_fails() {
+    let raw = evm_doc("").replace(r#"listen = "127.0.0.1:8080""#, r#"listen = "0.0.0.0:8080""#);
+    let err = parse_config_toml(&raw).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("non-loopback"), "got {msg}");
+    assert!(msg.contains("[http.auth]"), "got {msg}");
+}
+
+#[test]
+fn ipv6_unspecified_listen_without_auth_fails() {
+    let raw = evm_doc("").replace(r#"listen = "127.0.0.1:8080""#, r#"listen = "[::]:8080""#);
+    let err = parse_config_toml(&raw).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("non-loopback"), "got {msg}");
+    assert!(msg.contains("[http.auth]"), "got {msg}");
+}
+
+#[test]
+fn ipv6_loopback_listen_without_auth_ok() {
+    let raw = evm_doc("").replace(r#"listen = "127.0.0.1:8080""#, r#"listen = "[::1]:8080""#);
+    parse_config_toml(&raw).expect("::1 may omit [http.auth]");
+}
+
+#[test]
+fn non_loopback_listen_with_auth_ok() {
+    let raw = evm_doc("[http.auth]\nbearer_env = \"FACILITATOR_API_TOKEN\"\n")
+        .replace(r#"listen = "127.0.0.1:8080""#, r#"listen = "0.0.0.0:8080""#);
+    parse_config_toml(&raw).expect("auth covers 0.0.0.0");
 }

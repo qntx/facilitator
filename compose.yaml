@@ -7,6 +7,7 @@
 # Distroless image has no curl; no HEALTHCHECK. Probe HTTP /healthz /readyz.
 # File-mount host config must be readable by uid 65532 (example is 0644).
 # Do not set user:. Image USER is 65532. Do not --scale.
+# FACILITATOR_API_TOKEN is required: in-container listen is 0.0.0.0.
 
 services:
   facilitator:
@@ -23,6 +24,7 @@ services:
       FACILITATOR_HTTP_LISTEN: "0.0.0.0:8080"
       FACILITATOR_HTTP_METRICS_LISTEN: "0.0.0.0:9090"
       FACILITATOR_EVM_KEY: ${FACILITATOR_EVM_KEY}
+      FACILITATOR_API_TOKEN: ${FACILITATOR_API_TOKEN}
     volumes:
       - ${FACILITATOR_CONFIG:-./config.example.toml}:/etc/facilitator/config.toml:ro
     stop_grace_period: 35s

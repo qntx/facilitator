@@ -9,6 +9,7 @@ Type=simple
 User=facilitator
 Group=facilitator
 Restart=on-failure
+# env: FACILITATOR_EVM_KEY and FACILITATOR_API_TOKEN ([http.auth] / non-loopback listen)
 EnvironmentFile=-/etc/facilitator/env
 ExecStart=/usr/bin/facilitator serve -c /etc/facilitator/config.toml
 TimeoutStopSec=35
