@@ -4,7 +4,7 @@ metadata:
   name: facilitator
   labels:
     app.kubernetes.io/name: facilitator
-    app.kubernetes.io/version: "0.7.0"
+    app.kubernetes.io/version: "0.7.1"
 spec:
   # In-memory SettlementCache / PendingSettlementStore. Do not scale. No HPA.
   replicas: 1
@@ -17,7 +17,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: facilitator
-        app.kubernetes.io/version: "0.7.0"
+        app.kubernetes.io/version: "0.7.1"
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: facilitator
-          image: ghcr.io/qntx/facilitator:0.7.0
+          image: ghcr.io/qntx/facilitator:0.7.1
           imagePullPolicy: IfNotPresent
           args: ["serve", "-c", "/etc/facilitator/config.toml"]
           env:
@@ -39,6 +39,11 @@ spec:
               value: "0.0.0.0:8080"
             - name: FACILITATOR_HTTP_METRICS_LISTEN
               value: "0.0.0.0:9090"
+            - name: FACILITATOR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: facilitator-secrets
+                  key: api-token
           ports:
             - name: protocol
               containerPort: 8080
@@ -75,6 +80,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
+            # Directory mount (not subPath). Replaces /etc/facilitator.
             - name: config
               mountPath: /etc/facilitator
               readOnly: true

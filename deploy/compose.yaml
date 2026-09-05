@@ -5,13 +5,16 @@
 #   docker compose -f deploy/compose.yaml --profile tls up
 #
 # Distroless image has no curl; no HEALTHCHECK. Probe HTTP /healthz /readyz.
+# GHCR is linux/amd64. Host config file-mount must be readable by uid 65532.
+# FACILITATOR_API_TOKEN is required: in-container listen is 0.0.0.0.
 
 services:
   facilitator:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: ghcr.io/qntx/facilitator:0.7.0
+    image: ghcr.io/qntx/facilitator:0.7.1
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
@@ -20,6 +23,7 @@ services:
       FACILITATOR_HTTP_LISTEN: "0.0.0.0:8080"
       FACILITATOR_HTTP_METRICS_LISTEN: "0.0.0.0:9090"
       FACILITATOR_EVM_KEY: ${FACILITATOR_EVM_KEY}
+      FACILITATOR_API_TOKEN: ${FACILITATOR_API_TOKEN}
     volumes:
       - ${FACILITATOR_CONFIG:-../config.example.toml}:/etc/facilitator/config.toml:ro
     stop_grace_period: 35s

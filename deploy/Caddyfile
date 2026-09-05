@@ -1,6 +1,8 @@
 # Replace the hostname. Caddy provisions Let's Encrypt on :80/:443.
 # No reverse_proxy transport timeout: Axum settle_timeout (default 30s) is the process cap.
 # Do not proxy /metrics (metrics listen is 9090, not the protocol port).
+# /verify /settle /supported require Authorization: Bearer (facilitator [http.auth]).
+# Caddy forwards that header. /healthz /readyz stay unauthenticated.
 
 facilitator.example.com {
 	encode gzip

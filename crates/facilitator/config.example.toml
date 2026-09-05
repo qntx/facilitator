@@ -1,5 +1,7 @@
-# config.example.toml — x402 facilitator 0.7 (r402 0.20)
+# config.example.toml — x402 facilitator 0.7.1 (r402 0.20)
 # Secrets: env or file. Literals for private keys are a startup error.
+# Non-loopback listen (Docker FACILITATOR_HTTP_LISTEN=0.0.0.0:8080 included)
+# requires [http.auth]. Loopback may delete the table. Set FACILITATOR_API_TOKEN.
 
 [http]
 listen = "127.0.0.1:8080"
@@ -9,8 +11,8 @@ body_limit_bytes = 262144
 metrics_listen = "127.0.0.1:9090"   # Docker/k8s: 0.0.0.0:9090 or FACILITATOR_HTTP_METRICS_LISTEN
 # cors_origins = []   # empty / omitted = no CORS layer
 
-# [http.auth]
-# bearer_env = "FACILITATOR_API_TOKEN"
+[http.auth]
+bearer_env = "FACILITATOR_API_TOKEN"
 
 [log]
 level = "info"           # RUST_LOG wins
@@ -42,6 +44,7 @@ eip1559 = true
 flashblocks = false
 receipt_timeout_secs = 20
 
+# Base mainnet. Remove this table unless the hot wallet is funded and intended.
 [network."eip155:8453"]
 rpc = ["https://mainnet.base.org"]
 signers = ["evm_hot"]
