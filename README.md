@@ -39,9 +39,10 @@ Requires **Rust 1.95**.
 ```bash
 export FACILITATOR_EVM_KEY=0x...
 docker compose up --build
+# Orb: docker-compose up --build
 ```
 
-Image: `ghcr.io/qntx/facilitator:0.7.0`. Pin that tag or a digest.
+Do not run `ghcr.io/qntx/facilitator:0.7.0` (USER 65532 cannot traverse `/etc/facilitator`). Build from this Dockerfile until `0.7.1` is published. Then pin `:0.7.1` or a digest — not `:latest` / `:0` / `:0.7`.
 
 ## API
 
@@ -94,11 +95,26 @@ Schemes are config lists, not Cargo features.
 
 ## Deploy
 
-Runtime is [`gcr.io/distroless/cc-debian12:nonroot`](https://github.com/GoogleContainerTools/distroless). Probe `/healthz` and `/readyz`. Drain is `settle_timeout + 5s` (default 35s).
+Runtime is [`gcr.io/distroless/cc-debian12:nonroot`](https://github.com/GoogleContainerTools/distroless) (USER **65532**). Probe `GET /healthz` and `GET /readyz`. Distroless has no `HEALTHCHECK`. Drain is `settle_timeout + 5s` (default 35s).
 
-- Compose: [`compose.yaml`](compose.yaml), SVM overlay [`compose.svm.yaml`](compose.svm.yaml), TLS profile [`deploy/compose.yaml`](deploy/compose.yaml)
-- systemd: [`deploy/systemd/facilitator.service`](deploy/systemd/facilitator.service)
-- Kubernetes: [`deploy/k8s`](deploy/k8s) — `replicas: 1`, `strategy: Recreate`
+- Image is **linux/amd64** only. Apple Silicon / Orb: `platform: linux/amd64` is set in compose (QEMU). Build with `docker buildx` (Orb: `docker-buildx`), not legacy `docker build`. Probe with **curl**, not Python urllib, under QEMU.
+- Never `--user 0`. Image USER is 65532.
+- Compose file-mount of `config.toml` requires the host file readable by uid 65532 (`config.example.toml` is 0644). Host `0600` is `EACCES` inside the container.
+- Protocol `:8080` and metrics `:9090` are separate. Do not publish them on a public interface. [`deploy/compose.yaml`](deploy/compose.yaml) binds `127.0.0.1`. Put Caddy (or equivalent) in front. Enable `[http.auth]` bearer if the protocol port is reachable beyond localhost.
+- One replica. Settlement cache is in-memory. Do not `--scale`. k8s `strategy: Recreate`.
+- Secrets: `FACILITATOR_EVM_KEY` or a file source. Never TOML literals (startup error).
+- `ghcr.io/qntx/facilitator:0.7.0` is known-bad. Build from the Dockerfile until `0.7.1`.
+
+Compose: [`compose.yaml`](compose.yaml) (`docker compose` / Orb `docker-compose`), SVM overlay [`compose.svm.yaml`](compose.svm.yaml), TLS profile [`deploy/compose.yaml`](deploy/compose.yaml).
+
+systemd: [`deploy/systemd/facilitator.service`](deploy/systemd/facilitator.service) is a **host** unit (`User=facilitator`), not distroless uid 65532.
+
+```bash
+install -d -m 0755 /etc/facilitator
+install -m 0644 /path/to/config.toml /etc/facilitator/config.toml
+```
+
+Kubernetes: [`deploy/k8s`](deploy/k8s) — `replicas: 1`, `strategy: Recreate`, `runAsUser: 65532`, ConfigMap **directory** mount at `/etc/facilitator` (not a `subPath` file mount).
 
 ## Acknowledgments
 

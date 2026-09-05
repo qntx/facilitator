@@ -2,8 +2,11 @@
 #
 # Default config: config.example.toml (EVM exact+upto).
 # SVM overlay: docker compose -f compose.yaml -f compose.svm.yaml up --build
+# (Orb: docker-compose). GHCR is linux/amd64; Apple Silicon uses QEMU.
 #
 # Distroless image has no curl; no HEALTHCHECK. Probe HTTP /healthz /readyz.
+# File-mount host config must be readable by uid 65532 (example is 0644).
+# Do not set user:. Image USER is 65532. Do not --scale.
 
 services:
   facilitator:
@@ -11,6 +14,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: ghcr.io/qntx/facilitator:0.7.0
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "8080:8080"

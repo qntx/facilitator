@@ -35,6 +35,9 @@ deploy/
 # Image uses the rust:${RUST_VERSION} compiler, not rust-toolchain.toml.
 rust-toolchain.toml
 
+# CI image scripts (run from checkout, not COPY . .)
+scripts/
+
 # Docs / misc
 *.md
 LICENSE*

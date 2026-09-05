@@ -75,6 +75,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
+            # Directory mount (not subPath). Replaces /etc/facilitator.
             - name: config
               mountPath: /etc/facilitator
               readOnly: true
