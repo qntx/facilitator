@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 
 [lib]
 name = "facilitator"
