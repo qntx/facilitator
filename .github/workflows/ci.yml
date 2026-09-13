@@ -14,38 +14,13 @@ concurrency:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    uses: qntx/workflows/.github/workflows/ci-rust.yml@v2
     permissions:
       contents: read
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Format
-        run: cargo +nightly fmt --package facilitator --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Build
-        run: cargo build --workspace --locked --verbose
-
-      - name: Test
-        run: cargo test --workspace --locked --verbose
+    with:
+      deny: true
+      features: --features evm,svm,telemetry,metrics
+      timeout-minutes: 60
 
   ci-families:
     runs-on: ubuntu-latest
@@ -55,7 +30,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
 
@@ -67,11 +42,12 @@ jobs:
           protoc --version
           test -f /usr/include/google/protobuf/wrappers.proto
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
+          toolchain: stable
           components: clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Clippy families
         run: cargo clippy --workspace --all-targets --locked --features near,xrpl,hedera,avm,aptos,keeta,tvm,stellar,concordium,experimental-tron -- -D warnings
