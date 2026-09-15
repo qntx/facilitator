@@ -82,7 +82,7 @@ r402-svm = { version = "0.20", default-features = false, features = ["facilitato
 r402-near = { version = "0.20", default-features = false, optional = true }
 r402-xrpl = { version = "0.20", default-features = false, optional = true }
 r402-hedera = { version = "0.20", default-features = false, optional = true }
-r402-avm = { version = "0.20", default-features = false, optional = true }
+r402-avm = { version = "0.21", default-features = false, optional = true }
 r402-aptos = { version = "0.20", default-features = false, optional = true }
 r402-keeta = { version = "0.20", default-features = false, optional = true }
 r402-tvm = { version = "0.20", default-features = false, optional = true }
