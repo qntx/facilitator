@@ -3181,11 +3181,11 @@ dependencies = [
  "r402-concordium",
  "r402-evm",
  "r402-extensions",
- "r402-facilitator",
+ "r402-facilitator 0.20.0",
  "r402-hedera",
  "r402-keeta",
  "r402-near",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "r402-stellar",
  "r402-svm",
  "r402-tron",
@@ -6593,8 +6593,8 @@ dependencies = [
  "aptos-sdk",
  "base64 0.23.1",
  "compact_str",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -6612,8 +6612,8 @@ dependencies = [
  "compact_str",
  "data-encoding",
  "ed25519-dalek 3.0.0",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6632,7 +6632,7 @@ checksum = "57365132877f43d2e7de30fb37690d8ff9f599216dacfbd69c64294a63bc43df"
 dependencies = [
  "compact_str",
  "http 1.5.0",
- "r402-protocol",
+ "r402-protocol 0.20.0",
 ]
 
 [[package]]
@@ -6646,8 +6646,8 @@ dependencies = [
  "concordium-rust-sdk",
  "ed25519-dalek 2.2.0",
  "hex",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "rand 0.10.2",
  "serde",
  "serde_json",
@@ -6681,8 +6681,8 @@ dependencies = [
  "dashmap 6.2.1",
  "r402-client",
  "r402-extensions",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -6701,7 +6701,7 @@ checksum = "b552727db1d4cbf65a074ecbb72d43e26b3cf5a1156ed55c1e6433f3d548326e"
 dependencies = [
  "compact_str",
  "r402-client",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "serde_json",
  "thiserror 2.0.20",
 ]
@@ -6715,7 +6715,18 @@ dependencies = [
  "compact_str",
  "metrics",
  "moka",
- "r402-protocol",
+ "r402-protocol 0.20.0",
+]
+
+[[package]]
+name = "r402-facilitator"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9997ca17973cdf8b3063cf668553a891bad1c5f69bc2db543c4830bb84c58046"
+dependencies = [
+ "compact_str",
+ "moka",
+ "r402-protocol 0.21.0",
 ]
 
 [[package]]
@@ -6728,8 +6739,8 @@ dependencies = [
  "compact_str",
  "hedera",
  "hex",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6750,8 +6761,8 @@ dependencies = [
  "keetanetwork-block",
  "keetanetwork-client",
  "keetanetwork-crypto",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -6774,8 +6785,8 @@ dependencies = [
  "near-jsonrpc-client",
  "near-jsonrpc-primitives",
  "near-primitives",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -6801,6 +6812,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "r402-protocol"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f08b00a385b8d3c892c5e7aa0d594ee0a13126873d5e3f9757da6f22f9b2381"
+dependencies = [
+ "base64 0.23.1",
+ "compact_str",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "r402-stellar"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6808,8 +6834,8 @@ checksum = "507de4e6ad13e12de2c04447b2b02f4b27153551f7827dd7d8bfe4ea8dff47be"
 dependencies = [
  "compact_str",
  "ed25519-dalek 3.0.0",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6824,17 +6850,17 @@ dependencies = [
 
 [[package]]
 name = "r402-svm"
-version = "0.20.0"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34f12367e91c2bbf111c2300cb62985b982bc68c0367ad041265bd2016b0fd41"
+checksum = "93aadbf8f53d594839fdfb8e83baf7ba34e49eb8d2cdb73028fd7773ab98af8c"
 dependencies = [
  "base64 0.23.1",
  "bincode",
  "bs58 0.5.1",
  "compact_str",
  "futures-util",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.21.0",
+ "r402-protocol 0.21.0",
  "rand 0.10.2",
  "serde",
  "serde_json",
@@ -6869,8 +6895,8 @@ dependencies = [
  "alloy-sol-types",
  "bs58 0.5.1",
  "compact_str",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6894,8 +6920,8 @@ dependencies = [
  "hex",
  "num-bigint 0.4.8",
  "num-traits",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "rand 0.10.2",
  "reqwest 0.13.4",
  "serde",
@@ -6916,8 +6942,8 @@ checksum = "7ae8fb616f73cf66249c0131c621d30f3e374af3c7e5a770876bc63c3511be0b"
 dependencies = [
  "compact_str",
  "hex",
- "r402-facilitator",
- "r402-protocol",
+ "r402-facilitator 0.20.0",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "rust_decimal",
  "serde",
