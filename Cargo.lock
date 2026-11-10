@@ -3180,12 +3180,12 @@ dependencies = [
  "r402-avm",
  "r402-concordium",
  "r402-evm",
- "r402-extensions",
+ "r402-extensions 0.21.0",
  "r402-facilitator",
  "r402-hedera",
  "r402-keeta",
  "r402-near",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "r402-stellar",
  "r402-svm",
  "r402-tron",
@@ -6594,7 +6594,7 @@ dependencies = [
  "base64 0.23.1",
  "compact_str",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -6613,7 +6613,7 @@ dependencies = [
  "data-encoding",
  "ed25519-dalek 3.0.0",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6632,7 +6632,18 @@ checksum = "57365132877f43d2e7de30fb37690d8ff9f599216dacfbd69c64294a63bc43df"
 dependencies = [
  "compact_str",
  "http 1.5.0",
- "r402-protocol",
+ "r402-protocol 0.20.0",
+]
+
+[[package]]
+name = "r402-client"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08e351545841a4ee0da734e68dcff2fff2c106a6a77ea8dcb1e49ba41dd9032b"
+dependencies = [
+ "compact_str",
+ "http 1.5.0",
+ "r402-protocol 0.21.0",
 ]
 
 [[package]]
@@ -6647,7 +6658,7 @@ dependencies = [
  "ed25519-dalek 2.2.0",
  "hex",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "rand 0.10.2",
  "serde",
  "serde_json",
@@ -6679,10 +6690,10 @@ dependencies = [
  "async-trait",
  "compact_str",
  "dashmap 6.2.1",
- "r402-client",
- "r402-extensions",
+ "r402-client 0.20.0",
+ "r402-extensions 0.20.0",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -6700,8 +6711,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b552727db1d4cbf65a074ecbb72d43e26b3cf5a1156ed55c1e6433f3d548326e"
 dependencies = [
  "compact_str",
- "r402-client",
- "r402-protocol",
+ "r402-client 0.20.0",
+ "r402-protocol 0.20.0",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "r402-extensions"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38c8bea4c5b435fd38a2bcc9a9312c51f155cba617053959ef0095807c998510"
+dependencies = [
+ "compact_str",
+ "r402-client 0.21.0",
+ "r402-protocol 0.21.0",
  "serde_json",
  "thiserror 2.0.20",
 ]
@@ -6715,7 +6739,7 @@ dependencies = [
  "compact_str",
  "metrics",
  "moka",
- "r402-protocol",
+ "r402-protocol 0.20.0",
 ]
 
 [[package]]
@@ -6729,7 +6753,7 @@ dependencies = [
  "hedera",
  "hex",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6751,7 +6775,7 @@ dependencies = [
  "keetanetwork-client",
  "keetanetwork-crypto",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -6775,7 +6799,7 @@ dependencies = [
  "near-jsonrpc-primitives",
  "near-primitives",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -6801,6 +6825,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "r402-protocol"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f08b00a385b8d3c892c5e7aa0d594ee0a13126873d5e3f9757da6f22f9b2381"
+dependencies = [
+ "base64 0.23.1",
+ "compact_str",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "r402-stellar"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6809,7 +6848,7 @@ dependencies = [
  "compact_str",
  "ed25519-dalek 3.0.0",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6834,7 +6873,7 @@ dependencies = [
  "compact_str",
  "futures-util",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "rand 0.10.2",
  "serde",
  "serde_json",
@@ -6870,7 +6909,7 @@ dependencies = [
  "bs58 0.5.1",
  "compact_str",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -6895,7 +6934,7 @@ dependencies = [
  "num-bigint 0.4.8",
  "num-traits",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "rand 0.10.2",
  "reqwest 0.13.4",
  "serde",
@@ -6917,7 +6956,7 @@ dependencies = [
  "compact_str",
  "hex",
  "r402-facilitator",
- "r402-protocol",
+ "r402-protocol 0.20.0",
  "reqwest 0.13.4",
  "rust_decimal",
  "serde",
