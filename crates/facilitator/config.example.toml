@@ -1,4 +1,4 @@
-# config.example.toml — x402 facilitator 0.7.1 (r402 0.20)
+# config.example.toml — x402 facilitator 0.7.1 (r402 0.22)
 # Secrets: env or file. Literals for private keys are a startup error.
 # Non-loopback listen (Docker FACILITATOR_HTTP_LISTEN=0.0.0.0:8080 included)
 # requires [http.auth]. Loopback may delete the table. Set FACILITATOR_API_TOKEN.

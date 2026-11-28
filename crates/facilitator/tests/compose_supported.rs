@@ -92,7 +92,15 @@ async fn exact_supported_passes_through_sdk_kinds_and_signers() {
         [ANVIL_ADDR],
         "checksummed signer"
     );
-    assert!(supported.extensions.is_empty(), "no extra extensions");
+    assert_eq!(
+        supported
+            .extensions
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>(),
+        ["eip2612GasSponsoring", "erc20ApprovalGasSponsoring"],
+        "SDK-advertised Permit2 sponsoring ids only"
+    );
 }
 
 #[cfg(feature = "evm")]
