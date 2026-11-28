@@ -77,16 +77,6 @@ ignore = [
   # Revisit: remove when alloy moves to elliptic-curve 0.14 and
   # keetanetwork-* move off crypto-bigint 0.6; review by 2027-02-27.
   { id = "RUSTSEC-2026-0387", reason = "REACHABLE: facilitator signs every EVM/keeta settlement through crypto-bigint 0.5.5 (PrivateKeySigner->k256->elliptic-curve) and 0.6.1 (keetanetwork-crypto); exploit needs a local/co-resident timing channel; no in-range patch; review by 2027-02-27" },
-  # url <= 2.5.8: `Url::origin()` recurses once per nested `blob:` prefix
-  # and can overflow the stack. Across the workspace and every registry
-  # crate in Cargo.lock the only caller (nothing calls
-  # `url::quirks::origin()`) is r402-extensions' `SiwxOrigin::parse`,
-  # which rejects every non-http(s) scheme before `.origin()` — `blob:`
-  # can never reach it.
-  # Fixed in 2.5.9, published 2026-11-20T23:03Z.
-  # Revisit: from 2026-11-28 (7-day rule) run `cargo update -p url` to
-  # 2.5.9 and remove this entry.
-  { id = "RUSTSEC-2026-0592", reason = "not reachable: sole Url::origin() caller r402-extensions SiwxOrigin::parse rejects non-http(s) before .origin(), so blob: never reaches it; bump url to 2.5.9 and remove from 2026-11-28" },
   # --- Unmaintained (not vulnerable); transitive-only, upstream must move.
   # instant 0.1.3x via backoff 0.4.0 <- hedera 0.43.0 <- r402-hedera
   # (also fastrand <- futures-lite <- wstd <- keetanetwork-client).
