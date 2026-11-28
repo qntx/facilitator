@@ -63,8 +63,8 @@ compact_str = { workspace = true }
 humantime-serde = { workspace = true }
 metrics = { workspace = true, optional = true }
 metrics-exporter-prometheus = { workspace = true, optional = true }
-r402-facilitator = { version = "0.20", default-features = false }
-r402-protocol = "0.20"
+r402-facilitator = { version = "0.22", default-features = false }
+r402-protocol = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
 subtle = { workspace = true }
@@ -76,19 +76,19 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
-r402-evm = { version = "0.20", default-features = false, features = ["facilitator"], optional = true }
-r402-extensions = { version = "0.20", default-features = false, features = ["ext-builder-code", "ext-erc20-approval"], optional = true }
-r402-svm = { version = "0.20", default-features = false, features = ["facilitator"], optional = true }
-r402-near = { version = "0.20", default-features = false, optional = true }
-r402-xrpl = { version = "0.20", default-features = false, optional = true }
-r402-hedera = { version = "0.20", default-features = false, optional = true }
-r402-avm = { version = "0.20", default-features = false, optional = true }
-r402-aptos = { version = "0.20", default-features = false, optional = true }
-r402-keeta = { version = "0.20", default-features = false, optional = true }
-r402-tvm = { version = "0.20", default-features = false, optional = true }
-r402-stellar = { version = "0.20", default-features = false, optional = true }
-r402-concordium = { version = "0.20", default-features = false, optional = true }
-r402-tron = { version = "0.20", default-features = false, optional = true }
+r402-evm = { version = "0.22", default-features = false, features = ["facilitator"], optional = true }
+r402-extensions = { version = "0.22", default-features = false, features = ["ext-builder-code"], optional = true }
+r402-svm = { version = "0.22", default-features = false, features = ["facilitator"], optional = true }
+r402-near = { version = "0.22", default-features = false, optional = true }
+r402-xrpl = { version = "0.22", default-features = false, optional = true }
+r402-hedera = { version = "0.22", default-features = false, optional = true }
+r402-avm = { version = "0.22", default-features = false, optional = true }
+r402-aptos = { version = "0.22", default-features = false, optional = true }
+r402-keeta = { version = "0.22", default-features = false, optional = true }
+r402-tvm = { version = "0.22", default-features = false, optional = true }
+r402-stellar = { version = "0.22", default-features = false, optional = true }
+r402-concordium = { version = "0.22", default-features = false, optional = true }
+r402-tron = { version = "0.22", default-features = false, optional = true }
 solana-keypair = { workspace = true, optional = true }
 
 [dev-dependencies]
