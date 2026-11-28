@@ -25,7 +25,6 @@ env = "FACILITATOR_EVM_KEY"
 [scheme.evm]
 clock_skew_secs = 6
 eip6492_allowed_factories = []
-erc20_approval_gas_sponsoring = false
 
 [network."eip155:84532"]
 rpc = ["https://sepolia.base.org"]
@@ -67,7 +66,7 @@ max_channel_lifetime_secs = 3600
 # max_required_signatures
 # compute_unit_price_micro_lamports
 # settle_compute_unit_limit
-# One replica: InMemoryChannelStorage is process-local. r402 0.20
+# One replica: InMemoryChannelStorage is process-local. r402 0.21
 # does not expose a rent-cleanup manager; restart drops the channel index
 # and Distributed-channel rent is not reclaimed. verify/settle still run.
 
