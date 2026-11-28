@@ -25,7 +25,6 @@ env = "FACILITATOR_EVM_KEY"
 [scheme.evm]
 clock_skew_secs = 6
 eip6492_allowed_factories = []
-erc20_approval_gas_sponsoring = false
 
 [network."eip155:84532"]
 rpc = ["https://sepolia.base.org"]

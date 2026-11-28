@@ -24,9 +24,6 @@ pub struct EvmSchemeConfig {
     /// EIP-6492 factory allowlist (empty = fail-closed).
     #[serde(default)]
     pub eip6492_allowed_factories: Vec<String>,
-    /// Whether ERC-20 approval gas sponsoring is advertised.
-    #[serde(default)]
-    pub erc20_approval_gas_sponsoring: bool,
     /// Optional builder-code facilitator config.
     #[serde(default)]
     pub builder_code: Option<BuilderCodeToml>,

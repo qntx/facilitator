@@ -92,7 +92,15 @@ async fn exact_supported_passes_through_sdk_kinds_and_signers() {
         [ANVIL_ADDR],
         "checksummed signer"
     );
-    assert!(supported.extensions.is_empty(), "no extra extensions");
+    assert_eq!(
+        supported
+            .extensions
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>(),
+        ["eip2612GasSponsoring", "erc20ApprovalGasSponsoring"],
+        "SDK-advertised Permit2 sponsoring ids only"
+    );
 }
 
 #[cfg(feature = "evm")]
@@ -124,12 +132,9 @@ receipt_timeout_secs = 20
 
 #[cfg(feature = "evm")]
 #[tokio::test]
-async fn erc20_and_builder_code_append_extension_ids() {
+async fn builder_code_appends_after_sdk_extension_ids() {
     let cfg = parse_config_toml(&evm_doc(
-        &scheme_evm(
-            r#"erc20_approval_gas_sponsoring = true
-builder_code = { builder_code = "wallet", service_code = "svc" }"#,
-        ),
+        &scheme_evm(r#"builder_code = { builder_code = "wallet", service_code = "svc" }"#),
         "",
     ))
     .expect("parse");
@@ -138,8 +143,12 @@ builder_code = { builder_code = "wallet", service_code = "svc" }"#,
     let extensions: Vec<&str> = supported.extensions.iter().map(AsRef::as_ref).collect();
     assert_eq!(
         extensions,
-        ["erc20ApprovalGasSponsoring", "builder-code"],
-        "config-driven identifiers the SDK does not put on kinds"
+        [
+            "eip2612GasSponsoring",
+            "erc20ApprovalGasSponsoring",
+            "builder-code"
+        ],
+        "SDK-advertised Permit2 sponsoring ids, then the config-driven builder code"
     );
 }
 

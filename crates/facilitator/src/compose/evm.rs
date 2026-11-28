@@ -15,7 +15,6 @@ use r402_evm::{
 };
 use r402_extensions::{
     BUILDER_CODE, BuilderCodeFacilitatorConfig, BuilderCodeFacilitatorExtension,
-    ERC20_APPROVAL_GAS_SPONSORING_KEY,
 };
 use r402_facilitator::{DynFacilitator, PendingSettlementStore, SettlementCache};
 use r402_protocol::{
@@ -40,7 +39,6 @@ pub(super) struct Prepare {
 struct Settings {
     clock_skew_secs: Option<u64>,
     factories: Vec<Address>,
-    erc20: bool,
     builder_code: Option<BuilderCodeFacilitatorExtension>,
 }
 
@@ -105,9 +103,6 @@ impl Prepare {
         if let Some(secs) = self.settings.clock_skew_secs {
             facilitator = facilitator.with_clock_skew_tolerance(secs);
         }
-        if self.settings.erc20 {
-            facilitator = facilitator.with_erc20_approval_gas_sponsoring();
-        }
         if let Some(extension) = self.settings.builder_code.clone() {
             facilitator = facilitator.with_builder_code(extension);
         }
@@ -125,9 +120,6 @@ impl Prepare {
             Eip155UptoFacilitator::with_settlement_cache(Arc::clone(provider), self.cache.clone());
         if let Some(secs) = self.settings.clock_skew_secs {
             facilitator = facilitator.with_clock_skew_tolerance(secs);
-        }
-        if self.settings.erc20 {
-            facilitator = facilitator.with_erc20_approval_gas_sponsoring();
         }
         if let Some(extension) = self.settings.builder_code.clone() {
             facilitator = facilitator.with_builder_code(extension);
@@ -205,7 +197,6 @@ impl Settings {
         Ok(Self {
             clock_skew_secs: cfg.clock_skew_secs,
             factories: parse_factories(&cfg.eip6492_allowed_factories)?,
-            erc20: cfg.erc20_approval_gas_sponsoring,
             builder_code: cfg
                 .builder_code
                 .as_ref()
@@ -215,9 +206,6 @@ impl Settings {
     }
 
     fn apply_extensions(&self, map: &mut FacilitatorMap) {
-        if self.erc20 {
-            map.push_extension(ERC20_APPROVAL_GAS_SPONSORING_KEY);
-        }
         if self.builder_code.is_some() {
             map.push_extension(BUILDER_CODE);
         }
